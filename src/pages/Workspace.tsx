@@ -129,13 +129,24 @@ export default function Workspace() {
 
     const provider = getActiveProvider(settings);
     if (!provider) {
-      setShowSettings(true);
       setMessages([{
         id: 'msg-' + Date.now(),
         type: 'error',
-        content: 'No LLM provider configured. Please add an API key in Settings.',
+        content: '⚠️ No LLM provider configured. Click Settings (⚙️) to add your API key.',
         timestamp: Date.now(),
       }]);
+      setShowSettings(true);
+      return;
+    }
+
+    if (!provider.apiKey) {
+      setMessages([{
+        id: 'msg-' + Date.now(),
+        type: 'error',
+        content: `⚠️ ${provider.name} API key is missing. Click Settings (⚙️) to configure it.`,
+        timestamp: Date.now(),
+      }]);
+      setShowSettings(true);
       return;
     }
 
@@ -144,6 +155,12 @@ export default function Workspace() {
       id: 'msg-' + Date.now(),
       type: 'user',
       content: prompt,
+      timestamp: Date.now(),
+    }]);
+    setMessages(prev => [...prev, {
+      id: 'msg-' + Date.now() + '-start',
+      type: 'system',
+      content: `🚀 Starting agent with ${provider.name} (${provider.model || 'default'})...`,
       timestamp: Date.now(),
     }]);
     setArtifact('');
@@ -164,7 +181,15 @@ export default function Workspace() {
       setFs(result.fs);
     } catch (e: any) {
       if (e.name !== 'AbortError') {
-        handleEvent({ type: 'error', message: e.message });
+        let errorMsg = e.message;
+        if (errorMsg.includes('Failed to fetch') || errorMsg.includes('NetworkError')) {
+          errorMsg = `Network error: Cannot reach ${provider.name} API. This might be due to CORS restrictions. Try using OpenRouter (openrouter.ai) which supports browser requests, or check your API key.`;
+        } else if (errorMsg.includes('401')) {
+          errorMsg = `Authentication failed: Invalid API key for ${provider.name}. Check your key in Settings.`;
+        } else if (errorMsg.includes('429')) {
+          errorMsg = `Rate limit exceeded for ${provider.name}. Please wait or try a different provider.`;
+        }
+        handleEvent({ type: 'error', message: errorMsg });
       }
     }
   };
@@ -578,11 +603,20 @@ function SettingsModal({ settings, onSave, onClose }: {
         </div>
 
         {/* Info banner */}
-        <div className="flex items-start gap-2 p-3 rounded-lg bg-blue-500/10 border border-blue-500/20 mb-6">
+        <div className="flex items-start gap-2 p-3 rounded-lg bg-blue-500/10 border border-blue-500/20 mb-4">
           <AlertTriangle size={14} className="text-blue-400 shrink-0 mt-0.5" />
-          <p className="text-xs text-blue-400">
-            API keys are stored only in your browser (localStorage). They are never sent to our servers — only directly to the provider's API.
-          </p>
+          <div className="text-xs text-blue-400 space-y-1">
+            <p><strong>Privacy:</strong> API keys are stored only in your browser. They are never sent to our servers.</p>
+            <p><strong>CORS:</strong> OpenRouter, Anthropic, and Groq support direct browser requests. OpenAI blocks browser requests (use OpenRouter as proxy instead).</p>
+          </div>
+        </div>
+
+        {/* Recommended provider */}
+        <div className="flex items-start gap-2 p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 mb-6">
+          <Zap size={14} className="text-emerald-400 shrink-0 mt-0.5" />
+          <div className="text-xs text-emerald-400">
+            <p><strong>Quick start:</strong> Get a free API key from <a href="https://openrouter.ai/keys" target="_blank" rel="noopener" className="underline">openrouter.ai</a> — supports 100+ models including free ones, works directly from browser.</p>
+          </div>
         </div>
 
         {/* Providers */}

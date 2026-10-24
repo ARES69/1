@@ -277,10 +277,23 @@ export async function runAgent(options: AgentRunOptions): Promise<{ fs: VirtualF
     // Call LLM
     let response: LLMResponse;
     try {
-      onEvent({ type: 'thinking', content: `Calling ${providerConfig.name} (${providerConfig.model})...` });
+      onEvent({ type: 'thinking', content: `⏳ Calling ${providerConfig.name} API...` });
       response = await llm.chat(messages, TOOLS);
     } catch (e: any) {
-      onEvent({ type: 'error', message: `LLM error: ${e.message}` });
+      let errorMsg = e.message;
+      
+      // Provide helpful error messages
+      if (errorMsg.includes('Failed to fetch') || errorMsg.includes('NetworkError') || errorMsg.includes('CORS')) {
+        errorMsg = `Cannot connect to ${providerConfig.name} API. This is likely due to CORS restrictions in your browser. Try:\n• Use OpenRouter (openrouter.ai) - supports browser requests\n• Use a CORS proxy\n• Check your network connection`;
+      } else if (errorMsg.includes('401') || errorMsg.includes('Unauthorized')) {
+        errorMsg = `Invalid API key for ${providerConfig.name}. Please check your key in Settings.`;
+      } else if (errorMsg.includes('429')) {
+        errorMsg = `Rate limit exceeded for ${providerConfig.name}. Please wait a moment or try a different provider.`;
+      } else if (errorMsg.includes('400')) {
+        errorMsg = `Bad request to ${providerConfig.name}: ${errorMsg}`;
+      }
+      
+      onEvent({ type: 'error', message: errorMsg });
       break;
     }
 
