@@ -1,16 +1,19 @@
 /**
- * Real Agent Engine — executes LLM with tool-calling loop.
- * No simulation. Real API calls, real tool execution, real artifacts.
+ * Streaming Agent Engine — executes LLM with tool-calling loop using streaming.
+ * Tokens appear in real-time as they're generated.
  */
 
 import { createProvider, type LLMMessage, type LLMResponse, type ToolDefinition, type ToolCall } from './llm-providers';
+import { streamChat, type StreamDelta } from './streaming';
 import { VirtualFS } from './virtual-fs';
 import type { ProviderKey } from './settings';
 
 /* ─── Event types emitted during agent execution ─── */
 export type AgentEvent =
+  | { type: 'token'; content: string }  // Streaming token
   | { type: 'thinking'; content: string }
   | { type: 'tool_call'; tool: string; args: Record<string, any>; result: string }
+  | { type: 'tool_call_streaming'; tool: string; argsPartial: string }  // Tool call being streamed
   | { type: 'console'; content: string }
   | { type: 'file_written'; path: string; size: number }
   | { type: 'file_read'; path: string }
@@ -81,18 +84,18 @@ const TOOLS: ToolDefinition[] = [
   },
   {
     name: 'run_code',
-    description: 'Execute JavaScript/TypeScript code in the sandbox. Returns the result. Use for data processing, calculations, or generating content.',
+    description: 'Execute JavaScript/TypeScript code in the sandbox. Returns the result.',
     parameters: {
       type: 'object',
       properties: {
-        code: { type: 'string', description: 'JavaScript code to execute. Use return statement or the last expression as result.' },
+        code: { type: 'string', description: 'JavaScript code to execute' },
       },
       required: ['code'],
     },
   },
   {
     name: 'finish',
-    description: 'Signal that the artifact is complete and ready for delivery. Call this when all files are written and the task is done.',
+    description: 'Signal that the artifact is complete and ready for delivery.',
     parameters: {
       type: 'object',
       properties: {
@@ -188,7 +191,6 @@ class ToolExecutor {
         }
 
         case 'finish': {
-          // This is handled specially by the agent loop
           return 'finish';
         }
 
@@ -202,7 +204,6 @@ class ToolExecutor {
 
   private executeCode(code: string): string {
     try {
-      // Create a sandboxed execution context
       const logs: string[] = [];
       const sandboxConsole = {
         log: (...args: any[]) => logs.push(args.map(a => typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)).join(' ')),
@@ -210,7 +211,6 @@ class ToolExecutor {
         warn: (...args: any[]) => logs.push('[WARN] ' + args.map(a => String(a)).join(' ')),
       };
 
-      // Execute with a timeout
       const wrappedCode = `
         (function() {
           const console = { log: __log, error: __error, warn: __warn };
@@ -238,23 +238,29 @@ class ToolExecutor {
   }
 }
 
-/* ─── Agent run controller ─── */
+/* ─── Agent run controller with streaming ─── */
 export interface AgentRunOptions {
   provider: ProviderKey;
   prompt: string;
   onEvent: (event: AgentEvent) => void;
   signal?: AbortSignal;
   maxIterations?: number;
+  projectInstructions?: string;
 }
 
 export async function runAgent(options: AgentRunOptions): Promise<{ fs: VirtualFS; artifact: string | null }> {
-  const { provider: providerConfig, prompt, onEvent, signal, maxIterations = 25 } = options;
+  const { provider: providerConfig, prompt, onEvent, signal, maxIterations = 25, projectInstructions } = options;
   const fs = new VirtualFS();
   const executor = new ToolExecutor(fs, onEvent);
-  const llm = createProvider(providerConfig);
+
+  // Build system prompt with project instructions
+  let systemPrompt = SYSTEM_PROMPT;
+  if (projectInstructions?.trim()) {
+    systemPrompt += `\n\n<project_instructions>\n${projectInstructions}\n</project_instructions>\n\nFollow these project-specific instructions when generating code.`;
+  }
 
   const messages: LLMMessage[] = [
-    { role: 'system', content: SYSTEM_PROMPT },
+    { role: 'system', content: systemPrompt },
     { role: 'user', content: prompt },
   ];
 
@@ -265,7 +271,6 @@ export async function runAgent(options: AgentRunOptions): Promise<{ fs: VirtualF
   let finished = false;
 
   while (iteration < maxIterations && !finished) {
-    // Check abort
     if (signal?.aborted) {
       onEvent({ type: 'error', message: 'Run cancelled by user' });
       break;
@@ -274,46 +279,99 @@ export async function runAgent(options: AgentRunOptions): Promise<{ fs: VirtualF
     iteration++;
     onEvent({ type: 'progress', step: iteration, total: maxIterations, label: `Iteration ${iteration}` });
 
-    // Call LLM
-    let response: LLMResponse;
+    // Stream response from LLM
+    let fullContent = '';
+    let toolCalls: ToolCall[] = [];
+    let currentToolCall: Partial<ToolCall> | null = null;
+    let usageInfo: { prompt_tokens: number; completion_tokens: number } | null = null;
+
     try {
-      onEvent({ type: 'thinking', content: `⏳ Calling ${providerConfig.name} API...` });
-      response = await llm.chat(messages, TOOLS);
+      onEvent({ type: 'thinking', content: `Calling ${providerConfig.name} (${providerConfig.model})...` });
+      
+      const stream = streamChat(providerConfig, messages, TOOLS, signal);
+      
+      for await (const delta of stream) {
+        if (signal?.aborted) break;
+
+        switch (delta.type) {
+          case 'content':
+            if (delta.content) {
+              fullContent += delta.content;
+              onEvent({ type: 'token', content: delta.content });
+            }
+            break;
+          
+          case 'tool_call_start':
+            currentToolCall = {
+              id: delta.toolCallId || '',
+              name: delta.toolCallName || '',
+              arguments: {},
+            };
+            onEvent({ type: 'tool_call_streaming', tool: delta.toolCallName || '', argsPartial: '' });
+            break;
+          
+          case 'tool_call_delta':
+            if (currentToolCall && delta.toolCallArgs) {
+              // Accumulate JSON arguments
+              try {
+                const argsStr = (currentToolCall as any)._argsStr || '';
+                (currentToolCall as any)._argsStr = argsStr + delta.toolCallArgs;
+                onEvent({ type: 'tool_call_streaming', tool: currentToolCall.name || '', argsPartial: (currentToolCall as any)._argsStr });
+              } catch {}
+            }
+            break;
+          
+          case 'tool_call_end':
+            if (currentToolCall) {
+              // Parse accumulated arguments
+              try {
+                const argsStr = (currentToolCall as any)._argsStr || '{}';
+                currentToolCall.arguments = JSON.parse(argsStr);
+                toolCalls.push(currentToolCall as ToolCall);
+              } catch (e) {
+                console.warn('Failed to parse tool call arguments:', e);
+              }
+              currentToolCall = null;
+            }
+            break;
+          
+          case 'usage':
+            if (delta.usage) {
+              usageInfo = delta.usage;
+            }
+            break;
+          
+          case 'error':
+            throw new Error(delta.error || 'Stream error');
+          
+          case 'done':
+            break;
+        }
+      }
     } catch (e: any) {
       let errorMsg = e.message;
-      
-      // Provide helpful error messages
       if (errorMsg.includes('Failed to fetch') || errorMsg.includes('NetworkError') || errorMsg.includes('CORS')) {
-        errorMsg = `Cannot connect to ${providerConfig.name} API. This is likely due to CORS restrictions in your browser. Try:\n• Use OpenRouter (openrouter.ai) - supports browser requests\n• Use a CORS proxy\n• Check your network connection`;
+        errorMsg = `Cannot connect to ${providerConfig.name} API. This is likely due to CORS restrictions. Try:\n• Use OpenRouter (openrouter.ai) - supports browser requests\n• Check your network connection`;
       } else if (errorMsg.includes('401') || errorMsg.includes('Unauthorized')) {
         errorMsg = `Invalid API key for ${providerConfig.name}. Please check your key in Settings.`;
       } else if (errorMsg.includes('429')) {
-        errorMsg = `Rate limit exceeded for ${providerConfig.name}. Please wait a moment or try a different provider.`;
-      } else if (errorMsg.includes('400')) {
-        errorMsg = `Bad request to ${providerConfig.name}: ${errorMsg}`;
+        errorMsg = `Rate limit exceeded for ${providerConfig.name}. Please wait or try a different provider.`;
       }
-      
       onEvent({ type: 'error', message: errorMsg });
       break;
     }
 
     // Track usage
-    if (response.usage) {
-      totalPromptTokens += response.usage.prompt_tokens;
-      totalCompletionTokens += response.usage.completion_tokens;
+    if (usageInfo) {
+      totalPromptTokens += usageInfo.prompt_tokens;
+      totalCompletionTokens += usageInfo.completion_tokens;
       onEvent({ type: 'usage', prompt_tokens: totalPromptTokens, completion_tokens: totalCompletionTokens });
     }
 
-    // If model returned content, emit it as thinking
-    if (response.content) {
-      onEvent({ type: 'thinking', content: response.content });
-    }
-
-    // If no tool calls, we're done (model just responded with text)
-    if (response.tool_calls.length === 0) {
-      // Try to extract artifact from filesystem
+    // If no tool calls, we're done
+    if (toolCalls.length === 0) {
       artifact = buildArtifact(fs);
-      onEvent({ type: 'done', artifact, summary: response.content || 'Task completed' });
+      onEvent({ type: 'done', artifact, summary: fullContent || 'Task completed' });
       finished = true;
       break;
     }
@@ -321,12 +379,12 @@ export async function runAgent(options: AgentRunOptions): Promise<{ fs: VirtualF
     // Add assistant message with tool calls
     messages.push({
       role: 'assistant',
-      content: response.content || '',
-      tool_calls: response.tool_calls,
+      content: fullContent || '',
+      tool_calls: toolCalls,
     });
 
     // Execute each tool call
-    for (const tc of response.tool_calls) {
+    for (const tc of toolCalls) {
       if (signal?.aborted) break;
 
       // Check for finish tool
@@ -334,7 +392,6 @@ export async function runAgent(options: AgentRunOptions): Promise<{ fs: VirtualF
         const summary = tc.arguments.summary || 'Task completed';
         const entryFile = tc.arguments.entry_file || 'index.html';
         
-        // Build artifact from the entry file
         const entryContent = fs.read(entryFile);
         if (entryContent) {
           artifact = buildArtifactFromEntry(fs, entryFile, entryContent);
@@ -351,11 +408,8 @@ export async function runAgent(options: AgentRunOptions): Promise<{ fs: VirtualF
       // Execute tool
       onEvent({ type: 'tool_call', tool: tc.name, args: tc.arguments, result: '...' });
       const result = await executor.execute(tc);
-      
-      // Update the event with actual result
       onEvent({ type: 'tool_call', tool: tc.name, args: tc.arguments, result });
 
-      // Add tool result to messages
       messages.push({
         role: 'tool',
         content: result,
@@ -380,36 +434,29 @@ export async function runAgent(options: AgentRunOptions): Promise<{ fs: VirtualF
 
 /* ─── Artifact builders ─── */
 function buildArtifact(fs: VirtualFS): string | null {
-  // Look for index.html first
   const indexHtml = fs.read('index.html');
   if (indexHtml) {
     return buildArtifactFromEntry(fs, 'index.html', indexHtml);
   }
 
-  // Look for any HTML file
   const allFiles = fs.getAll();
   const htmlFile = allFiles.find(f => f.path.endsWith('.html'));
   if (htmlFile) {
     return buildArtifactFromEntry(fs, htmlFile.path, htmlFile.content);
   }
 
-  // No HTML found — build a simple display of all files
   if (allFiles.length === 0) return null;
-
   return buildFallbackArtifact(allFiles);
 }
 
 function buildArtifactFromEntry(fs: VirtualFS, entryPath: string, entryContent: string): string {
-  // If it's a self-contained HTML, return as-is
   if (entryContent.includes('</html>') && !entryContent.includes('src="') && !entryContent.includes('href="')) {
     return entryContent;
   }
 
-  // Try to inline CSS and JS references
   let html = entryContent;
   const allFiles = fs.getAll();
 
-  // Inline <link rel="stylesheet" href="...">
   html = html.replace(/<link[^>]*rel=["']stylesheet["'][^>]*href=["']([^"']+)["'][^>]*\/?>/gi, (match, href) => {
     const cssFile = allFiles.find(f => f.path === href || f.path.endsWith('/' + href));
     if (cssFile) {
@@ -418,7 +465,6 @@ function buildArtifactFromEntry(fs: VirtualFS, entryPath: string, entryContent: 
     return match;
   });
 
-  // Inline <script src="...">
   html = html.replace(/<script[^>]*src=["']([^"']+)["'][^>]*><\/script>/gi, (match, src) => {
     const jsFile = allFiles.find(f => f.path === src || f.path.endsWith('/' + src));
     if (jsFile) {
