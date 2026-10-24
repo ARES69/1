@@ -41,7 +41,6 @@ export function Footer() {
             <ul className="space-y-2">
               <li><Link to="/pricing" className="text-sm hover:text-brand-400 transition-colors" style={{ color: 'var(--text-secondary)' }}>{t.nav.pricing}</Link></li>
               <li><Link to="/app" className="text-sm hover:text-brand-400 transition-colors" style={{ color: 'var(--text-secondary)' }}>{t.nav.workspace}</Link></li>
-              <li><Link to="/brand" className="text-sm hover:text-brand-400 transition-colors" style={{ color: 'var(--text-secondary)' }}>{t.nav.brand}</Link></li>
               <li><Link to="/blog" className="text-sm hover:text-brand-400 transition-colors" style={{ color: 'var(--text-secondary)' }}>{t.footer.blog}</Link></li>
             </ul>
           </div>

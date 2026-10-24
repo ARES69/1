@@ -27,7 +27,6 @@ export function Header() {
     { to: '/', label: t.nav.home },
     { to: '/pricing', label: t.nav.pricing },
     { to: '/app', label: t.nav.workspace },
-    { to: '/brand', label: t.nav.brand },
     { to: '/blog', label: t.nav.blog },
   ];
 

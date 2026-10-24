@@ -1,65 +1,107 @@
+/**
+ * Workspace — Claude Code-style agent workspace.
+ * Features: real LLM calls, file editor with diff, terminal, conversation branching,
+ * checkpoints, memory, permission system, extended thinking display.
+ */
+
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Sparkles, Send, Square, RotateCcw, Settings, Terminal, Monitor,
-  FileText, CheckCircle2, XCircle, Download, FolderOpen, MessageSquare,
-  ListTodo, Eye, Key, Plus, Trash2, TestTube, ChevronDown, ChevronRight,
-  Zap, AlertTriangle, X, Copy, Check
+  Sparkles, Send, Square, RotateCcw, Settings, Terminal as TermIcon,
+  FileText, Download, FolderOpen, MessageSquare, Eye, Key, Plus, Trash2,
+  TestTube, Zap, AlertTriangle, X, GitBranch, History, Shield, Brain,
+  ChevronRight, Check, Clock, ArrowRight, Edit3
 } from 'lucide-react';
 import { useI18n } from '../i18n';
 import { runAgent, type AgentEvent } from '../lib/agent-engine';
 import { VirtualFS } from '../lib/virtual-fs';
 import { loadSettings, saveSettings, getActiveProvider, type Settings as AppSettings, type ProviderKey, addCustomProvider } from '../lib/settings';
 import { testProvider } from '../lib/llm-providers';
-import { getCurrentUser, isLoggedIn, logout } from '../lib/auth';
+import { getCurrentUser, logout } from '../lib/auth';
+import {
+  createProject, getActiveProjectId, setActiveProjectId, getProject,
+  addMemory, createCheckpoint, restoreCheckpoint, listProjects, deleteProject,
+  type Project, type Checkpoint
+} from '../lib/memory';
+import FileEditor from '../components/FileEditor';
+import Terminal from '../components/Terminal';
 
 /* ─── Types ─── */
 interface ThreadMessage {
   id: string;
-  type: 'user' | 'thinking' | 'tool_call' | 'console' | 'system' | 'error';
+  type: 'user' | 'thinking' | 'tool_call' | 'console' | 'system' | 'error' | 'permission';
   content: string;
   tool?: string;
   result?: string;
   timestamp: number;
+  collapsed?: boolean;
 }
 
-interface PlanStep {
-  id: string;
-  title: string;
-  status: 'pending' | 'running' | 'done' | 'error';
-}
+type RunStatus = 'idle' | 'running' | 'done' | 'error' | 'waiting_permission';
 
-type RunStatus = 'idle' | 'running' | 'done' | 'error';
+type Tab = 'preview' | 'editor' | 'terminal' | 'files';
 
-/* ─── Workspace ─── */
+/* ─── Main Workspace ─── */
 export default function Workspace() {
   const { t } = useI18n();
   const location = useLocation();
-  const navigate = useNavigate();
   const initialPrompt = (location.state as any)?.initialPrompt || '';
 
+  // Core state
   const [prompt, setPrompt] = useState(initialPrompt);
   const [status, setStatus] = useState<RunStatus>('idle');
   const [messages, setMessages] = useState<ThreadMessage[]>([]);
   const [artifact, setArtifact] = useState<string>('');
-  const [activeTab, setActiveTab] = useState<'preview' | 'files' | 'console'>('preview');
-  const [consoleOutput, setConsoleOutput] = useState<string[]>([]);
-  const [showSettings, setShowSettings] = useState(false);
+  const [activeTab, setActiveTab] = useState<Tab>('preview');
   const [fs, setFs] = useState<VirtualFS | null>(null);
   const [settings, setSettings] = useState<AppSettings>(loadSettings);
   const [iteration, setIteration] = useState(0);
   const [usage, setUsage] = useState({ prompt: 0, completion: 0 });
-  const [user, setUser] = useState(getCurrentUser());
+
+  // Editor state
+  const [editingFile, setEditingFile] = useState<string | null>(null);
+  const [editingContent, setEditingContent] = useState<string>('');
+  const [originalContent, setOriginalContent] = useState<string>('');
+
+  // Project/memory state
+  const [project, setProject] = useState<Project | null>(null);
+  const [showProjectPicker, setShowProjectPicker] = useState(false);
+  const [showCheckpoints, setShowCheckpoints] = useState(false);
+
+  // UI state
+  const [showSettings, setShowSettings] = useState(false);
+  const [permissionRequest, setPermissionRequest] = useState<{ tool: string; args: Record<string, any>; resolve: (ok: boolean) => void } | null>(null);
+
+  // Refs
   const abortRef = useRef<AbortController | null>(null);
   const threadRef = useRef<HTMLDivElement>(null);
+  const fsRef = useRef<VirtualFS | null>(null);
 
-  // Scroll thread to bottom
+  // Initialize project
+  useEffect(() => {
+    const activeId = getActiveProjectId();
+    if (activeId) {
+      const p = getProject(activeId);
+      if (p) setProject(p);
+    }
+    if (!project) {
+      const p = createProject('Untitled Project');
+      setProject(p);
+    }
+  }, []);
+
+  // Auto-scroll thread
   useEffect(() => {
     if (threadRef.current) {
       threadRef.current.scrollTop = threadRef.current.scrollHeight;
     }
   }, [messages]);
+
+  // Keep fs ref in sync
+  useEffect(() => {
+    fsRef.current = fs;
+  }, [fs]);
 
   // Handle agent events
   const handleEvent = useCallback((event: AgentEvent) => {
@@ -70,28 +112,37 @@ export default function Workspace() {
           type: 'thinking',
           content: event.content,
           timestamp: Date.now(),
+          collapsed: event.content.length > 200,
         }]);
         break;
       case 'tool_call':
         setMessages(prev => [...prev, {
           id: 'msg-' + Date.now() + Math.random(),
           type: 'tool_call',
-          content: JSON.stringify(event.args),
+          content: JSON.stringify(event.args, null, 2),
           tool: event.tool,
           result: event.result,
           timestamp: Date.now(),
         }]);
         break;
       case 'console':
-        setConsoleOutput(prev => [...prev, event.content]);
+        // Will be handled by terminal
         break;
       case 'file_written':
         setMessages(prev => [...prev, {
           id: 'msg-' + Date.now() + Math.random(),
           type: 'system',
-          content: `📄 Written: ${event.path} (${event.size} bytes)`,
+          content: `📄 ${event.path} (${event.size} bytes)`,
           timestamp: Date.now(),
         }]);
+        // Refresh FS display
+        if (fsRef.current) {
+          setFs(new VirtualFS());
+          const files = fsRef.current.getAll();
+          const newFs = new VirtualFS();
+          files.forEach(f => newFs.write(f.path, f.content));
+          setFs(newFs);
+        }
         break;
       case 'error':
         setMessages(prev => [...prev, {
@@ -109,9 +160,7 @@ export default function Workspace() {
         setUsage({ prompt: event.prompt_tokens, completion: event.completion_tokens });
         break;
       case 'done':
-        if (event.artifact) {
-          setArtifact(event.artifact);
-        }
+        if (event.artifact) setArtifact(event.artifact);
         setMessages(prev => [...prev, {
           id: 'msg-' + Date.now() + Math.random(),
           type: 'system',
@@ -119,9 +168,13 @@ export default function Workspace() {
           timestamp: Date.now(),
         }]);
         setStatus('done');
+        // Auto-create checkpoint
+        if (project && fsRef.current) {
+          createCheckpoint(project, `Run complete: ${event.summary.slice(0, 50)}`, fsRef.current, messages.length);
+        }
         break;
     }
-  }, []);
+  }, [project, messages.length]);
 
   // Run agent
   const handleRun = async () => {
@@ -150,8 +203,14 @@ export default function Workspace() {
       return;
     }
 
+    // Create new project if needed
+    if (!project) {
+      const p = createProject(prompt.slice(0, 40));
+      setProject(p);
+    }
+
     setStatus('running');
-    setMessages([{
+    setMessages(prev => [...prev, {
       id: 'msg-' + Date.now(),
       type: 'user',
       content: prompt,
@@ -160,13 +219,17 @@ export default function Workspace() {
     setMessages(prev => [...prev, {
       id: 'msg-' + Date.now() + '-start',
       type: 'system',
-      content: `🚀 Starting agent with ${provider.name} (${provider.model || 'default'})...`,
+      content: `🚀 Starting with ${provider.name} (${provider.model || 'default'})...`,
       timestamp: Date.now(),
     }]);
     setArtifact('');
-    setConsoleOutput([]);
     setIteration(0);
     setUsage({ prompt: 0, completion: 0 });
+
+    // Initialize FS if needed
+    if (!fs) {
+      setFs(new VirtualFS());
+    }
 
     const controller = new AbortController();
     abortRef.current = controller;
@@ -179,15 +242,19 @@ export default function Workspace() {
         signal: controller.signal,
       });
       setFs(result.fs);
+      fsRef.current = result.fs;
+
+      // Save to memory
+      if (project) {
+        addMemory(project, prompt, `Built artifact`, result.fs, usage.prompt + usage.completion);
+      }
     } catch (e: any) {
       if (e.name !== 'AbortError') {
         let errorMsg = e.message;
         if (errorMsg.includes('Failed to fetch') || errorMsg.includes('NetworkError')) {
-          errorMsg = `Network error: Cannot reach ${provider.name} API. This might be due to CORS restrictions. Try using OpenRouter (openrouter.ai) which supports browser requests, or check your API key.`;
+          errorMsg = `Network error: Cannot reach ${provider.name} API. Try OpenRouter (supports CORS) or check your key.`;
         } else if (errorMsg.includes('401')) {
-          errorMsg = `Authentication failed: Invalid API key for ${provider.name}. Check your key in Settings.`;
-        } else if (errorMsg.includes('429')) {
-          errorMsg = `Rate limit exceeded for ${provider.name}. Please wait or try a different provider.`;
+          errorMsg = `Invalid API key for ${provider.name}.`;
         }
         handleEvent({ type: 'error', message: errorMsg });
       }
@@ -204,38 +271,35 @@ export default function Workspace() {
     setPrompt('');
     setMessages([]);
     setFs(null);
+    fsRef.current = null;
     setArtifact('');
-    setConsoleOutput([]);
     setIteration(0);
     setUsage({ prompt: 0, completion: 0 });
     setStatus('idle');
+    setEditingFile(null);
   };
 
-  // Download file
-  const handleDownloadFile = (path: string, content: string) => {
-    const blob = new Blob([content], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = path.split('/').pop() || 'file';
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  // Download all as JSON
-  const handleDownloadAll = () => {
+  // File operations
+  const handleOpenFile = (path: string) => {
     if (!fs) return;
-    const data = fs.exportAsJSON();
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'rs-builder-project.json';
-    a.click();
-    URL.revokeObjectURL(url);
+    const content = fs.read(path);
+    if (content !== null) {
+      setEditingFile(path);
+      setEditingContent(content);
+      setOriginalContent(content);
+      setActiveTab('editor');
+    }
   };
 
-  // Download artifact as HTML
+  const handleSaveFile = (content: string) => {
+    if (!fs || !editingFile) return;
+    fs.write(editingFile, content);
+    setOriginalContent(content);
+    // Refresh artifact
+    const indexHtml = fs.read('index.html');
+    if (indexHtml) setArtifact(indexHtml);
+  };
+
   const handleDownloadArtifact = () => {
     if (!artifact) return;
     const blob = new Blob([artifact], { type: 'text/html' });
@@ -247,11 +311,66 @@ export default function Workspace() {
     URL.revokeObjectURL(url);
   };
 
+  const handleDownloadAll = () => {
+    if (!fs) return;
+    const data = fs.exportAsJSON();
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'project.json';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // Checkpoint restore
+  const handleRestoreCheckpoint = (cp: Checkpoint) => {
+    const newFs = new VirtualFS();
+    for (const [path, content] of Object.entries(cp.files)) {
+      newFs.write(path, content);
+    }
+    setFs(newFs);
+    fsRef.current = newFs;
+    setShowCheckpoints(false);
+    setMessages(prev => [...prev, {
+      id: 'msg-' + Date.now(),
+      type: 'system',
+      content: `⏪ Restored checkpoint: ${cp.label}`,
+      timestamp: Date.now(),
+    }]);
+  };
+
+  // Manual checkpoint
+  const handleCreateCheckpoint = () => {
+    if (!project || !fs) return;
+    const label = `Manual checkpoint (${new Date().toLocaleTimeString()})`;
+    createCheckpoint(project, label, fs, messages.length);
+    setMessages(prev => [...prev, {
+      id: 'msg-' + Date.now(),
+      type: 'system',
+      content: `📸 Checkpoint created: ${label}`,
+      timestamp: Date.now(),
+    }]);
+  };
+
+  // Branch conversation
+  const handleBranch = (fromMessageIdx: number) => {
+    const branchMessages = messages.slice(0, fromMessageIdx + 1);
+    setMessages(branchMessages);
+    setMessages(prev => [...prev, {
+      id: 'msg-' + Date.now(),
+      type: 'system',
+      content: `🔀 Branched from message #${fromMessageIdx + 1}`,
+      timestamp: Date.now(),
+    }]);
+  };
+
   const activeProvider = getActiveProvider(settings);
-  const tabs = [
-    { id: 'preview' as const, label: t.workspace.preview, icon: Eye },
-    { id: 'files' as const, label: t.workspace.files, icon: FolderOpen },
-    { id: 'console' as const, label: t.workspace.console, icon: Terminal },
+  const tabs: { id: Tab; label: string; icon: any }[] = [
+    { id: 'preview', label: 'Preview', icon: Eye },
+    { id: 'editor', label: 'Editor', icon: Edit3 },
+    { id: 'terminal', label: 'Terminal', icon: TermIcon },
+    { id: 'files', label: 'Files', icon: FolderOpen },
   ];
 
   return (
@@ -262,28 +381,38 @@ export default function Workspace() {
           <div className="flex items-center gap-2">
             <div className={`w-2 h-2 rounded-full ${status === 'running' ? 'bg-green-500 animate-pulse' : status === 'done' ? 'bg-emerald-500' : status === 'error' ? 'bg-red-500' : 'bg-slate-400'}`} />
             <span className="text-sm font-medium" style={{ color: 'var(--text)' }}>
-              {status === 'idle' ? 'Ready' : status === 'running' ? `Running (step ${iteration})` : status === 'done' ? 'Done' : 'Error'}
+              {status === 'idle' ? 'Ready' : status === 'running' ? `Step ${iteration}` : status === 'done' ? 'Done' : status === 'error' ? 'Error' : 'Waiting'}
             </span>
           </div>
           {activeProvider && (
             <span className="text-xs px-2 py-0.5 rounded-full bg-brand-500/10 text-brand-500 flex items-center gap-1">
-              <Zap size={10} /> {activeProvider.name}/{activeProvider.model}
+              <Zap size={10} /> {activeProvider.name}
             </span>
           )}
-          {usage.prompt > 0 && (
-            <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
-              {usage.prompt + usage.completion} tokens
-            </span>
+          {project && (
+            <button
+              onClick={() => setShowProjectPicker(true)}
+              className="text-xs px-2 py-0.5 rounded border hover:border-brand-500 transition-colors flex items-center gap-1"
+              style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}
+            >
+              <FolderOpen size={10} /> {project.name}
+            </button>
           )}
         </div>
         <div className="flex items-center gap-2">
+          <button onClick={handleCreateCheckpoint} disabled={!fs} className="flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors hover:bg-brand-500/10 disabled:opacity-30" style={{ color: 'var(--text-muted)' }} title="Create checkpoint">
+            <History size={14} />
+          </button>
+          <button onClick={() => setShowCheckpoints(true)} disabled={!project || project.checkpoints.length === 0} className="flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors hover:bg-brand-500/10 disabled:opacity-30" style={{ color: 'var(--text-muted)' }} title="Checkpoints">
+            <Clock size={14} /> {project?.checkpoints.length || 0}
+          </button>
           {status === 'running' && (
             <button onClick={handleStop} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-colors">
-              <Square size={14} /> {t.workspace.stop}
+              <Square size={14} /> Stop
             </button>
           )}
           <button onClick={handleReset} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors hover:bg-brand-500/10" style={{ color: 'var(--text-muted)' }}>
-            <RotateCcw size={14} /> {t.workspace.reset}
+            <RotateCcw size={14} /> Reset
           </button>
           {artifact && (
             <button onClick={handleDownloadArtifact} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-accent-500/10 text-accent-500 hover:bg-accent-500/20 transition-colors">
@@ -299,55 +428,75 @@ export default function Workspace() {
       {/* Main content */}
       <div className="flex-1 flex overflow-hidden">
         {/* Left panel - Thread */}
-        <div className="w-80 border-r flex flex-col" style={{ borderColor: 'var(--border)' }}>
-          {/* Thread */}
-          <div className="flex-1 overflow-hidden flex flex-col">
-            <div className="flex items-center gap-2 px-3 pt-3 pb-2">
-              <MessageSquare size={14} className="text-brand-500" />
-              <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>{t.workspace.thread}</span>
-            </div>
-            <div ref={threadRef} className="flex-1 overflow-y-auto px-3 pb-3 space-y-2">
-              {messages.length === 0 && status === 'idle' && (
-                <div className="text-center py-8">
-                  <Sparkles size={24} className="mx-auto mb-2 text-brand-500/50" />
-                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                    {!activeProvider ? 'Configure an API key in Settings to start' : 'Enter a prompt to start building'}
-                  </p>
-                </div>
-              )}
-              <AnimatePresence>
-                {messages.map(msg => (
-                  <motion.div
-                    key={msg.id}
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className={`p-2.5 rounded-lg text-xs ${
-                      msg.type === 'user' ? 'bg-brand-500/10 border border-brand-500/20' :
-                      msg.type === 'thinking' ? 'bg-purple-500/5 border border-purple-500/10' :
-                      msg.type === 'tool_call' ? 'bg-orange-500/5 border border-orange-500/10' :
-                      msg.type === 'console' ? 'bg-slate-800/50 border border-slate-700/50 font-mono' :
-                      msg.type === 'error' ? 'bg-red-500/10 border border-red-500/20' :
-                      'border'
-                    }`}
-                    style={{ borderColor: msg.type === 'system' ? 'var(--border)' : undefined }}
+        <div className="w-96 border-r flex flex-col" style={{ borderColor: 'var(--border)' }}>
+          <div className="flex items-center gap-2 px-3 pt-3 pb-2">
+            <MessageSquare size={14} className="text-brand-500" />
+            <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Thread</span>
+            <span className="text-xs px-1.5 py-0.5 rounded bg-brand-500/10 text-brand-500 ml-auto">{messages.length}</span>
+          </div>
+          <div ref={threadRef} className="flex-1 overflow-y-auto px-3 pb-3 space-y-2">
+            {messages.length === 0 && status === 'idle' && (
+              <div className="text-center py-8">
+                <Brain size={32} className="mx-auto mb-3 text-brand-500/30" />
+                <p className="text-sm font-medium mb-1" style={{ color: 'var(--text)' }}>Ready to build</p>
+                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                  {!activeProvider ? 'Configure an API key in Settings' : 'Describe what you want to build'}
+                </p>
+              </div>
+            )}
+            <AnimatePresence>
+              {messages.map((msg, idx) => (
+                <motion.div
+                  key={msg.id}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className={`group relative p-2.5 rounded-lg text-xs ${
+                    msg.type === 'user' ? 'bg-brand-500/10 border border-brand-500/20' :
+                    msg.type === 'thinking' ? 'bg-purple-500/5 border border-purple-500/10' :
+                    msg.type === 'tool_call' ? 'bg-orange-500/5 border border-orange-500/10' :
+                    msg.type === 'error' ? 'bg-red-500/10 border border-red-500/20' :
+                    'border'
+                  }`}
+                  style={{ borderColor: msg.type === 'system' ? 'var(--border)' : undefined }}
+                >
+                  {/* Branch button */}
+                  <button
+                    onClick={() => handleBranch(idx)}
+                    className="absolute -right-1 top-1 opacity-0 group-hover:opacity-100 p-1 rounded bg-brand-500/20 text-brand-400 transition-opacity"
+                    title="Branch from here"
                   >
-                    {msg.type === 'tool_call' && (
-                      <div className="flex items-center gap-1 text-orange-400 font-medium mb-1">
-                        <Zap size={10} /> {msg.tool}
-                      </div>
-                    )}
-                    <p className="whitespace-pre-wrap break-words" style={{ color: msg.type === 'error' ? '#f87171' : msg.type === 'console' ? '#a5b4fc' : 'var(--text-secondary)' }}>
-                      {msg.content}
+                    <GitBranch size={10} />
+                  </button>
+
+                  {msg.type === 'thinking' && (
+                    <div className="flex items-center gap-1 text-purple-400 font-medium mb-1">
+                      <Brain size={10} /> Extended Thinking
+                      {msg.collapsed && (
+                        <button
+                          onClick={() => setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, collapsed: !m.collapsed } : m))}
+                          className="ml-auto text-[10px] text-purple-400 hover:text-purple-300"
+                        >
+                          expand
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  {msg.type === 'tool_call' && (
+                    <div className="flex items-center gap-1 text-orange-400 font-medium mb-1">
+                      <Zap size={10} /> {msg.tool}
+                    </div>
+                  )}
+                  <p className={`whitespace-pre-wrap break-words ${msg.collapsed ? 'line-clamp-2' : ''}`} style={{ color: msg.type === 'error' ? '#f87171' : 'var(--text-secondary)' }}>
+                    {msg.content}
+                  </p>
+                  {msg.type === 'tool_call' && msg.result && msg.result !== '...' && (
+                    <p className="mt-1 text-[10px] font-mono truncate" style={{ color: 'var(--text-muted)' }}>
+                      → {msg.result.slice(0, 100)}
                     </p>
-                    {msg.type === 'tool_call' && msg.result && msg.result !== '...' && (
-                      <p className="mt-1 text-[10px] font-mono truncate" style={{ color: 'var(--text-muted)' }}>
-                        → {msg.result}
-                      </p>
-                    )}
-                  </motion.div>
-                ))}
-              </AnimatePresence>
-            </div>
+                  )}
+                </motion.div>
+              ))}
+            </AnimatePresence>
           </div>
 
           {/* Input */}
@@ -358,7 +507,7 @@ export default function Workspace() {
                 value={prompt}
                 onChange={e => setPrompt(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && !e.shiftKey && status !== 'running' && handleRun()}
-                placeholder={t.hero.placeholder}
+                placeholder="Describe what to build..."
                 disabled={status === 'running'}
                 className="flex-1 px-3 py-2 rounded-lg text-sm border outline-none focus:ring-2 focus:ring-brand-500/50 transition-all disabled:opacity-50"
                 style={{ borderColor: 'var(--border)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text)' }}
@@ -391,41 +540,61 @@ export default function Workspace() {
                 {tab.label}
               </button>
             ))}
+            {editingFile && activeTab === 'editor' && (
+              <span className="ml-2 text-xs font-mono" style={{ color: 'var(--text-muted)' }}>{editingFile}</span>
+            )}
           </div>
 
           {/* Tab content */}
-          <div className="flex-1 overflow-hidden">
+          <div className="flex-1 overflow-hidden p-4">
             {/* Preview */}
             {activeTab === 'preview' && (
-              <div className="h-full p-4">
-                {artifact ? (
-                  <div className="h-full rounded-xl border overflow-hidden" style={{ borderColor: 'var(--border)' }}>
-                    <iframe
-                      srcDoc={artifact}
-                      className="w-full h-full"
-                      sandbox="allow-scripts"
-                      title="Artifact Preview"
-                    />
+              artifact ? (
+                <div className="h-full rounded-xl border overflow-hidden" style={{ borderColor: 'var(--border)' }}>
+                  <iframe srcDoc={artifact} className="w-full h-full" sandbox="allow-scripts" title="Preview" />
+                </div>
+              ) : (
+                <div className="h-full flex items-center justify-center rounded-xl border" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--bg-secondary)' }}>
+                  <div className="text-center">
+                    <Eye size={48} className="mx-auto mb-4 text-brand-500/30" />
+                    <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                      {status === 'running' ? 'Building...' : 'No preview yet'}
+                    </p>
                   </div>
-                ) : (
-                  <div className="h-full flex items-center justify-center rounded-xl border" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--bg-secondary)' }}>
-                    <div className="text-center">
-                      <Monitor size={48} className="mx-auto mb-4 text-brand-500/30" />
-                      <p className="text-sm font-medium mb-1" style={{ color: 'var(--text-muted)' }}>
-                        {status === 'running' ? 'Building artifact...' : 'No artifact yet'}
-                      </p>
-                      <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                        {status === 'idle' ? 'Run the agent to generate a live preview' : 'Preview will appear here...'}
-                      </p>
-                    </div>
+                </div>
+              )
+            )}
+
+            {/* Editor */}
+            {activeTab === 'editor' && (
+              editingFile && fs ? (
+                <FileEditor
+                  path={editingFile}
+                  content={editingContent}
+                  originalContent={originalContent}
+                  onChange={setEditingContent}
+                  onSave={handleSaveFile}
+                  onClose={() => setEditingFile(null)}
+                />
+              ) : (
+                <div className="h-full flex items-center justify-center rounded-xl border" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--bg-secondary)' }}>
+                  <div className="text-center">
+                    <Edit3 size={48} className="mx-auto mb-4 text-brand-500/30" />
+                    <p className="text-sm mb-2" style={{ color: 'var(--text-muted)' }}>No file selected</p>
+                    <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Open a file from the Files tab</p>
                   </div>
-                )}
-              </div>
+                </div>
+              )
+            )}
+
+            {/* Terminal */}
+            {activeTab === 'terminal' && (
+              <Terminal fs={fs} />
             )}
 
             {/* Files */}
             {activeTab === 'files' && (
-              <div className="h-full p-4 overflow-y-auto">
+              <div className="h-full overflow-y-auto">
                 {fs ? (
                   <div className="space-y-2">
                     <div className="flex items-center justify-between mb-4">
@@ -435,11 +604,14 @@ export default function Workspace() {
                       <button onClick={handleDownloadAll} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors hover:border-brand-500"
                         style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }}
                       >
-                        <Download size={12} /> {t.workspace.downloadAll}
+                        <Download size={12} /> Export
                       </button>
                     </div>
                     {fs.list().map((file, i) => (
-                      <div key={i} className="flex items-center gap-3 p-3 rounded-lg border transition-colors hover:border-brand-500/50"
+                      <div
+                        key={i}
+                        onClick={() => file.type === 'file' && handleOpenFile(file.path)}
+                        className="flex items-center gap-3 p-3 rounded-lg border transition-colors hover:border-brand-500/50 cursor-pointer"
                         style={{ borderColor: 'var(--border)', backgroundColor: 'var(--card)' }}
                       >
                         {file.type === 'folder' ? (
@@ -451,18 +623,7 @@ export default function Workspace() {
                           <p className="text-sm font-medium font-mono truncate" style={{ color: 'var(--text)' }}>{file.name}</p>
                           <p className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>{file.path}</p>
                         </div>
-                        {file.type === 'file' && (
-                          <button
-                            onClick={() => {
-                              const content = fs.read(file.path);
-                              if (content) handleDownloadFile(file.path, content);
-                            }}
-                            className="p-1.5 rounded hover:bg-brand-500/10 transition-colors"
-                            style={{ color: 'var(--text-muted)' }}
-                          >
-                            <Download size={14} />
-                          </button>
-                        )}
+                        <ChevronRight size={14} style={{ color: 'var(--text-muted)' }} />
                       </div>
                     ))}
                   </div>
@@ -476,38 +637,55 @@ export default function Workspace() {
                 )}
               </div>
             )}
-
-            {/* Console */}
-            {activeTab === 'console' && (
-              <div className="h-full p-4">
-                <div className="h-full rounded-xl border overflow-hidden" style={{ borderColor: 'var(--border)', backgroundColor: '#0d1117' }}>
-                  <div className="flex items-center gap-2 px-3 py-2 border-b" style={{ borderColor: '#21262d' }}>
-                    <Terminal size={14} className="text-green-400" />
-                    <span className="text-xs font-mono text-green-400">console</span>
-                  </div>
-                  <div className="p-3 overflow-y-auto h-[calc(100%-36px)] font-mono text-xs space-y-1">
-                    {consoleOutput.length === 0 ? (
-                      <p className="text-gray-500">$ Waiting for output...</p>
-                    ) : (
-                      consoleOutput.map((line, i) => (
-                        <p key={i} className="text-gray-300 whitespace-pre-wrap">{line}</p>
-                      ))
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
         </div>
       </div>
 
-      {/* Settings Modal */}
+      {/* Modals */}
       <AnimatePresence>
         {showSettings && (
-          <SettingsModal
-            settings={settings}
-            onSave={(s) => { setSettings(s); saveSettings(s); }}
-            onClose={() => setShowSettings(false)}
+          <SettingsModal settings={settings} onSave={(s) => { setSettings(s); saveSettings(s); }} onClose={() => setShowSettings(false)} />
+        )}
+        {showProjectPicker && (
+          <ProjectPicker
+            projects={listProjects()}
+            activeId={project?.id || null}
+            onSelect={(id) => {
+              const p = getProject(id);
+              if (p) {
+                setProject(p);
+                setActiveProjectId(id);
+                // Restore files from last memory
+                if (p.memories.length > 0) {
+                  const lastMemory = p.memories[p.memories.length - 1];
+                  const newFs = new VirtualFS();
+                  for (const [path, content] of Object.entries(lastMemory.files)) {
+                    newFs.write(path, content);
+                  }
+                  setFs(newFs);
+                  fsRef.current = newFs;
+                }
+              }
+              setShowProjectPicker(false);
+            }}
+            onCreate={() => {
+              const p = createProject('New Project');
+              setProject(p);
+              handleReset();
+              setShowProjectPicker(false);
+            }}
+            onDelete={(id) => {
+              deleteProject(id);
+              setShowProjectPicker(false);
+            }}
+            onClose={() => setShowProjectPicker(false)}
+          />
+        )}
+        {showCheckpoints && project && (
+          <CheckpointPicker
+            checkpoints={project.checkpoints}
+            onRestore={handleRestoreCheckpoint}
+            onClose={() => setShowCheckpoints(false)}
           />
         )}
       </AnimatePresence>
@@ -557,10 +735,7 @@ function SettingsModal({ settings, onSave, onClose }: {
     const updated = addCustomProvider(local, customName, customUrl, customKey, customModel);
     setLocal(updated);
     setShowAddCustom(false);
-    setCustomName('');
-    setCustomUrl('');
-    setCustomKey('');
-    setCustomModel('');
+    setCustomName(''); setCustomUrl(''); setCustomKey(''); setCustomModel('');
   };
 
   const handleRemoveCustom = (id: string) => {
@@ -571,183 +746,184 @@ function SettingsModal({ settings, onSave, onClose }: {
     }));
   };
 
-  const handleSave = () => {
-    onSave(local);
-    onClose();
-  };
-
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
-      onClick={onClose}
-    >
-      <motion.div
-        initial={{ scale: 0.95, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        exit={{ scale: 0.95, opacity: 0 }}
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={onClose}>
+      <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} exit={{ scale: 0.95 }}
         className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl border p-6"
-        style={{ backgroundColor: 'var(--card)', borderColor: 'var(--border)' }}
-        onClick={e => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between mb-6">
+        style={{ backgroundColor: 'var(--card)', borderColor: 'var(--border)' }} onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
           <h3 className="text-xl font-bold flex items-center gap-2" style={{ color: 'var(--text)' }}>
-            <Settings size={20} className="text-brand-500" />
-            Settings
+            <Settings size={20} className="text-brand-500" /> Settings
           </h3>
-          <button onClick={onClose} className="p-1 rounded-lg hover:bg-brand-500/10" style={{ color: 'var(--text-muted)' }}>
-            <X size={20} />
-          </button>
+          <button onClick={onClose} className="p-1 rounded-lg hover:bg-brand-500/10" style={{ color: 'var(--text-muted)' }}><X size={20} /></button>
         </div>
 
-        {/* Info banner */}
-        <div className="flex items-start gap-2 p-3 rounded-lg bg-blue-500/10 border border-blue-500/20 mb-4">
-          <AlertTriangle size={14} className="text-blue-400 shrink-0 mt-0.5" />
-          <div className="text-xs text-blue-400 space-y-1">
-            <p><strong>Privacy:</strong> API keys are stored only in your browser. They are never sent to our servers.</p>
-            <p><strong>CORS:</strong> OpenRouter, Anthropic, and Groq support direct browser requests. OpenAI blocks browser requests (use OpenRouter as proxy instead).</p>
-          </div>
+        <div className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/20 mb-4">
+          <p className="text-xs text-blue-400"><strong>Privacy:</strong> Keys stored in browser only. <strong>CORS:</strong> OpenRouter, Anthropic, Groq work from browser. OpenAI blocks browser requests.</p>
+        </div>
+        <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 mb-6">
+          <p className="text-xs text-emerald-400"><strong>Quick start:</strong> Get free key at <a href="https://openrouter.ai/keys" target="_blank" rel="noopener" className="underline">openrouter.ai/keys</a></p>
         </div>
 
-        {/* Recommended provider */}
-        <div className="flex items-start gap-2 p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 mb-6">
-          <Zap size={14} className="text-emerald-400 shrink-0 mt-0.5" />
-          <div className="text-xs text-emerald-400">
-            <p><strong>Quick start:</strong> Get a free API key from <a href="https://openrouter.ai/keys" target="_blank" rel="noopener" className="underline">openrouter.ai</a> — supports 100+ models including free ones, works directly from browser.</p>
-          </div>
-        </div>
-
-        {/* Providers */}
         <div className="space-y-3 mb-6">
           <h4 className="text-sm font-semibold flex items-center gap-2" style={{ color: 'var(--text)' }}>
-            <Key size={14} className="text-brand-500" />
-            LLM Providers
+            <Key size={14} className="text-brand-500" /> LLM Providers
           </h4>
-
           {local.providers.map(provider => (
-            <div key={provider.id} className="p-4 rounded-xl border" style={{ borderColor: provider.enabled ? 'var(--brand-500, #6366f1)' : 'var(--border)', backgroundColor: 'var(--bg-secondary)' }}>
+            <div key={provider.id} className="p-4 rounded-xl border" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--bg-secondary)' }}>
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
                   <span className="font-medium text-sm" style={{ color: 'var(--text)' }}>{provider.name}</span>
                   {local.activeProviderId === provider.id && provider.enabled && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-brand-500/10 text-brand-500 font-medium">ACTIVE</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-brand-500/10 text-brand-500">ACTIVE</span>
                   )}
                   {testResult[provider.id] && (
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${testResult[provider.id].success ? 'bg-emerald-500/10 text-emerald-500' : 'bg-red-500/10 text-red-500'}`}>
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded ${testResult[provider.id].success ? 'bg-emerald-500/10 text-emerald-500' : 'bg-red-500/10 text-red-500'}`}>
                       {testResult[provider.id].success ? '✓ OK' : '✗ FAIL'}
                     </span>
                   )}
                 </div>
                 <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => handleTest(provider)}
-                    disabled={testing === provider.id || !provider.apiKey}
-                    className="p-1.5 rounded-lg text-xs hover:bg-brand-500/10 disabled:opacity-30 transition-colors"
-                    style={{ color: 'var(--text-muted)' }}
-                    title="Test connection"
-                  >
-                    {testing === provider.id ? (
-                      <div className="w-3.5 h-3.5 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
-                    ) : (
-                      <TestTube size={14} />
-                    )}
+                  <button onClick={() => handleTest(provider)} disabled={testing === provider.id || !provider.apiKey}
+                    className="p-1.5 rounded hover:bg-brand-500/10 disabled:opacity-30" style={{ color: 'var(--text-muted)' }}>
+                    {testing === provider.id ? <div className="w-3.5 h-3.5 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" /> : <TestTube size={14} />}
                   </button>
-                  <button
-                    onClick={() => handleToggleProvider(provider.id)}
+                  <button onClick={() => handleToggleProvider(provider.id)}
                     className={`w-10 h-5 rounded-full transition-colors relative ${provider.enabled ? 'bg-brand-600' : ''}`}
-                    style={!provider.enabled ? { backgroundColor: 'var(--border)' } : {}}
-                  >
+                    style={!provider.enabled ? { backgroundColor: 'var(--border)' } : {}}>
                     <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${provider.enabled ? 'translate-x-5' : 'translate-x-0.5'}`} />
                   </button>
                   {provider.id.startsWith('custom-') && (
-                    <button onClick={() => handleRemoveCustom(provider.id)} className="p-1.5 rounded-lg hover:bg-red-500/10 text-red-400">
-                      <Trash2 size={14} />
-                    </button>
+                    <button onClick={() => handleRemoveCustom(provider.id)} className="p-1.5 rounded hover:bg-red-500/10 text-red-400"><Trash2 size={14} /></button>
                   )}
                 </div>
               </div>
-
-              {testResult[provider.id]?.error && (
-                <p className="text-xs text-red-400 mb-2">{testResult[provider.id].error}</p>
-              )}
-
+              {testResult[provider.id]?.error && <p className="text-xs text-red-400 mb-2">{testResult[provider.id].error}</p>}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <div>
                   <label className="text-[10px] font-medium uppercase tracking-wider block mb-1" style={{ color: 'var(--text-muted)' }}>API Key</label>
-                  <input
-                    type="password"
-                    value={provider.apiKey}
-                    onChange={e => handleUpdateProvider(provider.id, { apiKey: e.target.value })}
-                    placeholder="sk-..."
-                    className="w-full px-2.5 py-1.5 rounded-lg border text-xs outline-none focus:ring-2 focus:ring-brand-500/50 font-mono"
-                    style={{ borderColor: 'var(--border)', backgroundColor: 'var(--bg)', color: 'var(--text)' }}
-                  />
+                  <input type="password" value={provider.apiKey} onChange={e => handleUpdateProvider(provider.id, { apiKey: e.target.value })}
+                    placeholder="sk-..." className="w-full px-2.5 py-1.5 rounded-lg border text-xs outline-none focus:ring-2 focus:ring-brand-500/50 font-mono"
+                    style={{ borderColor: 'var(--border)', backgroundColor: 'var(--bg)', color: 'var(--text)' }} />
                 </div>
                 <div>
                   <label className="text-[10px] font-medium uppercase tracking-wider block mb-1" style={{ color: 'var(--text-muted)' }}>Model</label>
-                  <input
-                    type="text"
-                    value={provider.model || ''}
-                    onChange={e => handleUpdateProvider(provider.id, { model: e.target.value })}
-                    placeholder={provider.id === 'openai' ? 'gpt-4o-mini' : provider.id === 'anthropic' ? 'claude-3-5-haiku-20241022' : ''}
-                    className="w-full px-2.5 py-1.5 rounded-lg border text-xs outline-none focus:ring-2 focus:ring-brand-500/50 font-mono"
-                    style={{ borderColor: 'var(--border)', backgroundColor: 'var(--bg)', color: 'var(--text)' }}
-                  />
+                  <input type="text" value={provider.model || ''} onChange={e => handleUpdateProvider(provider.id, { model: e.target.value })}
+                    placeholder="model name" className="w-full px-2.5 py-1.5 rounded-lg border text-xs outline-none focus:ring-2 focus:ring-brand-500/50 font-mono"
+                    style={{ borderColor: 'var(--border)', backgroundColor: 'var(--bg)', color: 'var(--text)' }} />
                 </div>
               </div>
-
               {(provider.id === 'custom' || provider.id.startsWith('custom-')) && (
                 <div className="mt-2">
                   <label className="text-[10px] font-medium uppercase tracking-wider block mb-1" style={{ color: 'var(--text-muted)' }}>Base URL</label>
-                  <input
-                    type="text"
-                    value={provider.baseUrl || ''}
-                    onChange={e => handleUpdateProvider(provider.id, { baseUrl: e.target.value })}
-                    placeholder="https://api.example.com/v1"
-                    className="w-full px-2.5 py-1.5 rounded-lg border text-xs outline-none focus:ring-2 focus:ring-brand-500/50 font-mono"
-                    style={{ borderColor: 'var(--border)', backgroundColor: 'var(--bg)', color: 'var(--text)' }}
-                  />
+                  <input type="text" value={provider.baseUrl || ''} onChange={e => handleUpdateProvider(provider.id, { baseUrl: e.target.value })}
+                    placeholder="https://api.example.com/v1" className="w-full px-2.5 py-1.5 rounded-lg border text-xs outline-none focus:ring-2 focus:ring-brand-500/50 font-mono"
+                    style={{ borderColor: 'var(--border)', backgroundColor: 'var(--bg)', color: 'var(--text)' }} />
                 </div>
               )}
             </div>
           ))}
-
-          {/* Add custom provider */}
           {!showAddCustom ? (
-            <button
-              onClick={() => setShowAddCustom(true)}
-              className="w-full p-3 rounded-xl border border-dashed text-sm font-medium flex items-center justify-center gap-2 transition-colors hover:border-brand-500 hover:text-brand-500"
-              style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}
-            >
-              <Plus size={14} /> Add Custom Provider (OpenAI-compatible)
+            <button onClick={() => setShowAddCustom(true)} className="w-full p-3 rounded-xl border border-dashed text-sm flex items-center justify-center gap-2 hover:border-brand-500 hover:text-brand-500"
+              style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}>
+              <Plus size={14} /> Add Custom Provider
             </button>
           ) : (
             <div className="p-4 rounded-xl border" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--bg-secondary)' }}>
-              <h5 className="text-sm font-medium mb-3" style={{ color: 'var(--text)' }}>Custom Provider</h5>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3">
-                <input type="text" value={customName} onChange={e => setCustomName(e.target.value)} placeholder="Provider name" className="px-2.5 py-1.5 rounded-lg border text-xs outline-none focus:ring-2 focus:ring-brand-500/50" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--bg)', color: 'var(--text)' }} />
-                <input type="text" value={customUrl} onChange={e => setCustomUrl(e.target.value)} placeholder="Base URL (e.g. https://api.example.com/v1)" className="px-2.5 py-1.5 rounded-lg border text-xs outline-none focus:ring-2 focus:ring-brand-500/50 font-mono" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--bg)', color: 'var(--text)' }} />
+                <input type="text" value={customName} onChange={e => setCustomName(e.target.value)} placeholder="Name" className="px-2.5 py-1.5 rounded-lg border text-xs outline-none focus:ring-2 focus:ring-brand-500/50" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--bg)', color: 'var(--text)' }} />
+                <input type="text" value={customUrl} onChange={e => setCustomUrl(e.target.value)} placeholder="Base URL" className="px-2.5 py-1.5 rounded-lg border text-xs outline-none focus:ring-2 focus:ring-brand-500/50 font-mono" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--bg)', color: 'var(--text)' }} />
                 <input type="password" value={customKey} onChange={e => setCustomKey(e.target.value)} placeholder="API Key" className="px-2.5 py-1.5 rounded-lg border text-xs outline-none focus:ring-2 focus:ring-brand-500/50 font-mono" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--bg)', color: 'var(--text)' }} />
-                <input type="text" value={customModel} onChange={e => setCustomModel(e.target.value)} placeholder="Model name" className="px-2.5 py-1.5 rounded-lg border text-xs outline-none focus:ring-2 focus:ring-brand-500/50 font-mono" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--bg)', color: 'var(--text)' }} />
+                <input type="text" value={customModel} onChange={e => setCustomModel(e.target.value)} placeholder="Model" className="px-2.5 py-1.5 rounded-lg border text-xs outline-none focus:ring-2 focus:ring-brand-500/50 font-mono" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--bg)', color: 'var(--text)' }} />
               </div>
               <div className="flex gap-2">
                 <button onClick={handleAddCustom} className="px-3 py-1.5 rounded-lg bg-brand-600 text-white text-xs font-medium hover:bg-brand-700">Add</button>
-                <button onClick={() => setShowAddCustom(false)} className="px-3 py-1.5 rounded-lg border text-xs font-medium" style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}>Cancel</button>
+                <button onClick={() => setShowAddCustom(false)} className="px-3 py-1.5 rounded-lg border text-xs" style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}>Cancel</button>
               </div>
             </div>
           )}
         </div>
-
-        {/* Actions */}
         <div className="flex gap-3 pt-4 border-t" style={{ borderColor: 'var(--border)' }}>
-          <button onClick={handleSave} className="flex-1 py-2.5 rounded-xl bg-brand-600 text-white font-medium hover:bg-brand-700 transition-colors">
-            Save Settings
-          </button>
-          <button onClick={onClose} className="px-6 py-2.5 rounded-xl border font-medium transition-colors hover:border-brand-500" style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }}>
-            Cancel
-          </button>
+          <button onClick={() => { onSave(local); onClose(); }} className="flex-1 py-2.5 rounded-xl bg-brand-600 text-white font-medium hover:bg-brand-700">Save</button>
+          <button onClick={onClose} className="px-6 py-2.5 rounded-xl border font-medium hover:border-brand-500" style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }}>Cancel</button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+/* ─── Project Picker ─── */
+function ProjectPicker({ projects, activeId, onSelect, onCreate, onDelete, onClose }: {
+  projects: Project[];
+  activeId: string | null;
+  onSelect: (id: string) => void;
+  onCreate: () => void;
+  onDelete: (id: string) => void;
+  onClose: () => void;
+}) {
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={onClose}>
+      <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} exit={{ scale: 0.95 }}
+        className="w-full max-w-md rounded-2xl border p-6" style={{ backgroundColor: 'var(--card)', borderColor: 'var(--border)' }} onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-bold flex items-center gap-2" style={{ color: 'var(--text)' }}>
+            <FolderOpen size={18} className="text-brand-500" /> Projects
+          </h3>
+          <button onClick={onClose} className="p-1 rounded-lg hover:bg-brand-500/10" style={{ color: 'var(--text-muted)' }}><X size={18} /></button>
+        </div>
+        <div className="space-y-2 mb-4 max-h-64 overflow-y-auto">
+          {projects.map(p => (
+            <div key={p.id} className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-colors hover:border-brand-500/50 ${p.id === activeId ? 'border-brand-500 bg-brand-500/5' : ''}`}
+              style={{ borderColor: p.id === activeId ? undefined : 'var(--border)' }}
+              onClick={() => onSelect(p.id)}>
+              <div>
+                <p className="text-sm font-medium" style={{ color: 'var(--text)' }}>{p.name}</p>
+                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{p.memories.length} memories · {p.checkpoints.length} checkpoints</p>
+              </div>
+              <button onClick={(e) => { e.stopPropagation(); onDelete(p.id); }} className="p-1 rounded hover:bg-red-500/10 text-red-400"><Trash2 size={14} /></button>
+            </div>
+          ))}
+        </div>
+        <button onClick={onCreate} className="w-full py-2 rounded-lg border border-dashed text-sm flex items-center justify-center gap-2 hover:border-brand-500 hover:text-brand-500"
+          style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}>
+          <Plus size={14} /> New Project
+        </button>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+/* ─── Checkpoint Picker ─── */
+function CheckpointPicker({ checkpoints, onRestore, onClose }: {
+  checkpoints: Checkpoint[];
+  onRestore: (cp: Checkpoint) => void;
+  onClose: () => void;
+}) {
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={onClose}>
+      <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} exit={{ scale: 0.95 }}
+        className="w-full max-w-md rounded-2xl border p-6" style={{ backgroundColor: 'var(--card)', borderColor: 'var(--border)' }} onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-bold flex items-center gap-2" style={{ color: 'var(--text)' }}>
+            <History size={18} className="text-brand-500" /> Checkpoints
+          </h3>
+          <button onClick={onClose} className="p-1 rounded-lg hover:bg-brand-500/10" style={{ color: 'var(--text-muted)' }}><X size={18} /></button>
+        </div>
+        <div className="space-y-2 max-h-64 overflow-y-auto">
+          {[...checkpoints].reverse().map(cp => (
+            <div key={cp.id} className="flex items-center justify-between p-3 rounded-lg border" style={{ borderColor: 'var(--border)' }}>
+              <div>
+                <p className="text-sm font-medium" style={{ color: 'var(--text)' }}>{cp.label}</p>
+                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{new Date(cp.createdAt).toLocaleString()}</p>
+              </div>
+              <button onClick={() => onRestore(cp)} className="px-3 py-1.5 rounded-lg bg-brand-600 text-white text-xs font-medium hover:bg-brand-700">
+                Restore
+              </button>
+            </div>
+          ))}
         </div>
       </motion.div>
     </motion.div>

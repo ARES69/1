@@ -6,7 +6,6 @@ import Home from './pages/Home';
 import Pricing from './pages/Pricing';
 import Workspace from './pages/Workspace';
 import Auth from './pages/Auth';
-import Brand from './pages/Brand';
 import Blog from './pages/Blog';
 import Legal from './pages/Legal';
 import { I18nProvider } from './i18n';
@@ -34,7 +33,6 @@ function Layout() {
             <Route path="/app" element={<Workspace />} />
             <Route path="/login" element={<Auth mode="login" />} />
             <Route path="/signup" element={<Auth mode="signup" />} />
-            <Route path="/brand" element={<Brand />} />
             <Route path="/blog" element={<Blog />} />
             <Route path="/blog/:slug" element={<Blog />} />
             <Route path="/legal/:slug" element={<Legal />} />
