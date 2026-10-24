@@ -1,15 +1,27 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Menu, X, Sparkles, Moon, Sun, Monitor, Globe } from 'lucide-react';
+import { Menu, X, Sparkles, Moon, Sun, Monitor, Globe, LogOut, UserCircle } from 'lucide-react';
 import { useI18n } from '../i18n';
 import { useTheme } from '../lib/theme';
+import { getCurrentUser, logout, type User } from '../lib/auth';
 
 export function Header() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const { t, lang, setLang } = useI18n();
   const { theme, setTheme } = useTheme();
   const location = useLocation();
+  const [user, setUser] = useState<User | null>(getCurrentUser());
+
+  useEffect(() => {
+    // Re-check auth on navigation
+    setUser(getCurrentUser());
+  }, [location.pathname]);
+
+  const handleLogout = () => {
+    logout();
+    setUser(null);
+  };
 
   const navItems = [
     { to: '/', label: t.nav.home },
@@ -73,21 +85,41 @@ export function Header() {
               {themeIcon}
             </button>
 
-            {/* Auth buttons */}
+            {/* Auth buttons / User menu */}
             <div className="hidden md:flex items-center gap-2">
-              <Link
-                to="/login"
-                className="px-3 py-2 rounded-lg text-sm font-medium transition-colors"
-                style={{ color: 'var(--text-secondary)' }}
-              >
-                {t.nav.login}
-              </Link>
-              <Link
-                to="/signup"
-                className="px-4 py-2 rounded-lg text-sm font-medium bg-brand-600 text-white hover:bg-brand-700 transition-colors"
-              >
-                {t.nav.signup}
-              </Link>
+              {user ? (
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg" style={{ backgroundColor: 'var(--bg-secondary)' }}>
+                    <UserCircle size={16} className="text-brand-500" />
+                    <span className="text-sm font-medium" style={{ color: 'var(--text)' }}>{user.name}</span>
+                    <span className="text-xs px-1.5 py-0.5 rounded bg-brand-500/10 text-brand-500">{user.credits} credits</span>
+                  </div>
+                  <button
+                    onClick={handleLogout}
+                    className="p-2 rounded-lg transition-colors hover:bg-red-500/10 hover:text-red-500"
+                    style={{ color: 'var(--text-muted)' }}
+                    title="Log out"
+                  >
+                    <LogOut size={16} />
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <Link
+                    to="/login"
+                    className="px-3 py-2 rounded-lg text-sm font-medium transition-colors"
+                    style={{ color: 'var(--text-secondary)' }}
+                  >
+                    {t.nav.login}
+                  </Link>
+                  <Link
+                    to="/signup"
+                    className="px-4 py-2 rounded-lg text-sm font-medium bg-brand-600 text-white hover:bg-brand-700 transition-colors"
+                  >
+                    {t.nav.signup}
+                  </Link>
+                </>
+              )}
             </div>
 
             {/* Mobile menu */}
@@ -125,12 +157,26 @@ export function Header() {
                 </Link>
               ))}
               <div className="pt-2 border-t flex gap-2" style={{ borderColor: 'var(--border)' }}>
-                <Link to="/login" className="px-4 py-2 rounded-lg text-sm font-medium border" style={{ borderColor: 'var(--border)' }}>
-                  {t.nav.login}
-                </Link>
-                <Link to="/signup" className="px-4 py-2 rounded-lg text-sm font-medium bg-brand-600 text-white">
-                  {t.nav.signup}
-                </Link>
+                {user ? (
+                  <>
+                    <div className="flex-1 flex items-center gap-2 px-3 py-2 rounded-lg" style={{ backgroundColor: 'var(--bg-secondary)' }}>
+                      <UserCircle size={16} className="text-brand-500" />
+                      <span className="text-sm font-medium" style={{ color: 'var(--text)' }}>{user.name}</span>
+                    </div>
+                    <button onClick={handleLogout} className="px-4 py-2 rounded-lg text-sm font-medium text-red-500">
+                      Log out
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <Link to="/login" onClick={() => setMobileOpen(false)} className="px-4 py-2 rounded-lg text-sm font-medium border" style={{ borderColor: 'var(--border)' }}>
+                      {t.nav.login}
+                    </Link>
+                    <Link to="/signup" onClick={() => setMobileOpen(false)} className="px-4 py-2 rounded-lg text-sm font-medium bg-brand-600 text-white">
+                      {t.nav.signup}
+                    </Link>
+                  </>
+                )}
               </div>
             </nav>
           </motion.div>

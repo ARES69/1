@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Sparkles, Mail, Lock, User, ArrowRight, AlertCircle } from 'lucide-react';
+import { Sparkles, Mail, Lock, User, ArrowRight, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { useI18n } from '../i18n';
+import { signup, login } from '../lib/auth';
 
 export default function Auth({ mode }: { mode: 'login' | 'signup' }) {
   const { t } = useI18n();
@@ -11,15 +12,32 @@ export default function Auth({ mode }: { mode: 'login' | 'signup' }) {
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || !password) {
-      setError('Please fill in all fields');
-      return;
+    setError('');
+    setLoading(true);
+
+    // Simulate async for UX
+    await new Promise(r => setTimeout(r, 300));
+
+    if (mode === 'signup') {
+      const result = signup(email, password, name);
+      if (result.success) {
+        navigate('/app');
+      } else {
+        setError(result.error || 'Signup failed');
+      }
+    } else {
+      const result = login(email, password);
+      if (result.success) {
+        navigate('/app');
+      } else {
+        setError(result.error || 'Login failed');
+      }
     }
-    // Demo mode: any credentials work
-    navigate('/app');
+    setLoading(false);
   };
 
   const isLogin = mode === 'login';
@@ -49,10 +67,12 @@ export default function Auth({ mode }: { mode: 'login' | 'signup' }) {
             </p>
           </div>
 
-          {/* Demo notice */}
+          {/* Info notice */}
           <div className="flex items-center gap-2 p-3 rounded-lg bg-brand-500/10 border border-brand-500/20 mb-6">
-            <AlertCircle size={14} className="text-brand-500 shrink-0" />
-            <p className="text-xs text-brand-500">{t.auth.demo}</p>
+            <CheckCircle2 size={14} className="text-brand-500 shrink-0" />
+            <p className="text-xs text-brand-500">
+              {isLogin ? 'Sign in with your registered email and password' : 'Create an account to save your projects and get 50 free credits'}
+            </p>
           </div>
 
           {/* Error */}
@@ -79,6 +99,7 @@ export default function Auth({ mode }: { mode: 'login' | 'signup' }) {
                     className="w-full pl-10 pr-4 py-2.5 rounded-lg border text-sm outline-none focus:ring-2 focus:ring-brand-500/50 transition-all"
                     style={{ borderColor: 'var(--border)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text)' }}
                     placeholder="John Doe"
+                    required
                   />
                 </div>
               </div>
@@ -97,6 +118,7 @@ export default function Auth({ mode }: { mode: 'login' | 'signup' }) {
                   className="w-full pl-10 pr-4 py-2.5 rounded-lg border text-sm outline-none focus:ring-2 focus:ring-brand-500/50 transition-all"
                   style={{ borderColor: 'var(--border)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text)' }}
                   placeholder="you@example.com"
+                  required
                 />
               </div>
             </div>
@@ -114,16 +136,25 @@ export default function Auth({ mode }: { mode: 'login' | 'signup' }) {
                   className="w-full pl-10 pr-4 py-2.5 rounded-lg border text-sm outline-none focus:ring-2 focus:ring-brand-500/50 transition-all"
                   style={{ borderColor: 'var(--border)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text)' }}
                   placeholder="••••••••"
+                  required
+                  minLength={6}
                 />
               </div>
             </div>
 
             <button
               type="submit"
-              className="w-full py-2.5 rounded-xl bg-brand-600 text-white font-medium hover:bg-brand-700 transition-colors flex items-center justify-center gap-2"
+              disabled={loading}
+              className="w-full py-2.5 rounded-xl bg-brand-600 text-white font-medium hover:bg-brand-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
             >
-              {isLogin ? t.auth.loginBtn : t.auth.signupBtn}
-              <ArrowRight size={16} />
+              {loading ? (
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <>
+                  {isLogin ? t.auth.loginBtn : t.auth.signupBtn}
+                  <ArrowRight size={16} />
+                </>
+              )}
             </button>
           </form>
 
