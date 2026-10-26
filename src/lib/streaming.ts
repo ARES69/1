@@ -191,13 +191,9 @@ async function* streamAnthropicFallback(
   const provider = createProvider(config);
   try {
     const response = await provider.chat(messages, tools);
+    // Real response — yield as single chunk (no fake word-by-word streaming)
     if (response.content) {
-      // Simulate streaming by yielding content in chunks
-      const words = response.content.split(' ');
-      for (let i = 0; i < words.length; i++) {
-        yield { type: 'content', content: (i > 0 ? ' ' : '') + words[i] };
-        await new Promise(r => setTimeout(r, 10));
-      }
+      yield { type: 'content', content: response.content };
     }
     for (const tc of response.tool_calls) {
       yield { type: 'tool_call_start', toolCallIndex: 0, toolCallId: tc.id, toolCallName: tc.name };
@@ -224,12 +220,9 @@ async function* streamGeminiFallback(
   const provider = createProvider(config);
   try {
     const response = await provider.chat(messages, tools);
+    // Real response — yield as single chunk (no fake word-by-word streaming)
     if (response.content) {
-      const words = response.content.split(' ');
-      for (let i = 0; i < words.length; i++) {
-        yield { type: 'content', content: (i > 0 ? ' ' : '') + words[i] };
-        await new Promise(r => setTimeout(r, 10));
-      }
+      yield { type: 'content', content: response.content };
     }
     for (const tc of response.tool_calls) {
       yield { type: 'tool_call_start', toolCallIndex: 0, toolCallId: tc.id, toolCallName: tc.name };

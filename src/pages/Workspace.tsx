@@ -28,6 +28,7 @@ import { loadProjectInstructions, saveProjectInstructions, formatInstructionsFor
 import { executeSlashCommand, isSlashCommand, type CommandContext } from '../lib/slash-commands';
 import FileEditor from '../components/FileEditor';
 import Terminal from '../components/Terminal';
+import { SetupModal, shouldShowSetup } from '../components/SetupModal';
 
 /* ─── Types ─── */
 interface ThreadMessage {
@@ -73,6 +74,7 @@ export default function Workspace() {
   const [showSettings, setShowSettings] = useState(false);
   const [showCostModal, setShowCostModal] = useState(false);
   const [showInstructionsModal, setShowInstructionsModal] = useState(false);
+  const [showSetup, setShowSetup] = useState(shouldShowSetup());
 
   // Cost tracking
   const [costTracker, setCostTracker] = useState<CostTracker>(createCostTracker());
@@ -775,6 +777,7 @@ Requests: ${costTracker.requests.length}`;
 
       {/* Modals */}
       <AnimatePresence>
+        {showSetup && <SetupModal onComplete={() => { setShowSetup(false); setSettings(loadSettings()); }} onSkip={() => setShowSetup(false)} />}
         {showSettings && <SettingsModal settings={settings} onSave={(s) => { setSettings(s); saveSettings(s); }} onClose={() => setShowSettings(false)} />}
         {showProjectPicker && (
           <ProjectPicker projects={listProjects()} activeId={project?.id || null}
