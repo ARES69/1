@@ -24,7 +24,7 @@ import {
   type Project, type Checkpoint
 } from '../lib/memory';
 import { createCostTracker, addRequest, formatCost, type CostTracker } from '../lib/cost-tracker';
-import { loadProjectInstructions, saveProjectInstructions, formatInstructionsForPrompt, DEFAULT_INSTRUCTIONS_TEMPLATE } from '../lib/project-instructions';
+import { loadProjectInstructions, saveProjectInstructions, DEFAULT_INSTRUCTIONS_TEMPLATE } from '../lib/project-instructions';
 import { executeSlashCommand, isSlashCommand, type CommandContext } from '../lib/slash-commands';
 import FileEditor from '../components/FileEditor';
 import Terminal from '../components/Terminal';
@@ -35,11 +35,10 @@ import ConversationSearch from '../components/ConversationSearch';
 import PermissionDialog from '../components/PermissionDialog';
 import type { ThreadMessage, ImageAttachment } from '../lib/types';
 import { calculateContextUsage, shouldAutoCompact, compactMessages } from '../lib/context-window';
-import { PermissionManager, createPermissionRequest, needsPermission } from '../lib/permission-system';
-import { withRetry, isRetryableError } from '../lib/error-recovery';
-import { saveSession, loadSession, hasSavedSession, formatSessionAge } from '../lib/session-resume';
+import { PermissionManager } from '../lib/permission-system';
+import { saveSession, loadSession } from '../lib/session-resume';
 import { exportConversation, downloadExport } from '../lib/conversation-export';
-import { convertImagesToAPIMessage } from '../lib/image-input';
+import { fileToImageAttachment } from '../lib/image-input';
 
 /* ─── Types ─── */
 type RunStatus = 'idle' | 'running' | 'done' | 'error';
@@ -86,7 +85,7 @@ export default function Workspace() {
   // New features state
   const [images, setImages] = useState<ImageAttachment[]>([]);
   const [showSearch, setShowSearch] = useState(false);
-  const [permissionRequest, setPermissionRequest] = useState<any>(null);
+  const [permissionRequest, setPermissionRequest] = useState<import('../lib/permission-system').PermissionRequest | null>(null);
   const permissionManagerRef = useRef(new PermissionManager());
 
   // Refs
@@ -420,10 +419,20 @@ Requests: ${costTracker.requests.length}`;
     }
 
     setStatus('running');
+    
+    // Build prompt with images if any
+    let finalPrompt = prompt;
+    if (images.length > 0) {
+      const imageDescriptions = images.map((img, i) => 
+        `[Image ${i + 1}: ${img.name}]`
+      ).join('\n');
+      finalPrompt = `${prompt}\n\nAttached images:\n${imageDescriptions}`;
+    }
+    
     setMessages(prev => [...prev, {
       id: 'msg-' + Date.now(),
       type: 'user',
-      content: prompt,
+      content: finalPrompt,
       timestamp: Date.now(),
     }]);
     setArtifact('');
@@ -442,7 +451,7 @@ Requests: ${costTracker.requests.length}`;
     try {
       const result = await runAgent({
         provider,
-        prompt,
+        prompt: finalPrompt,
         onEvent: handleEvent,
         signal: controller.signal,
         projectInstructions: instructions,
@@ -460,6 +469,7 @@ Requests: ${costTracker.requests.length}`;
     }
 
     setPrompt('');
+    setImages([]); // Clear images after sending
   };
 
   const handleStop = () => {
@@ -741,8 +751,7 @@ Requests: ${costTracker.requests.length}`;
                   input.onchange = async (e) => {
                     const files = (e.target as HTMLInputElement).files;
                     if (files) {
-                      const { fileToImageAttachment } = await import('../lib/image-input');
-                      const newImages = [];
+                      const newImages: ImageAttachment[] = [];
                       for (const file of Array.from(files)) {
                         const img = await fileToImageAttachment(file);
                         newImages.push(img);

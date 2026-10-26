@@ -5,6 +5,7 @@
 
 import type { ProviderKey } from './settings';
 import type { ToolDefinition, LLMMessage, ToolCall } from './llm-providers';
+import { createProvider } from './llm-providers';
 
 export interface StreamDelta {
   type: 'content' | 'tool_call_start' | 'tool_call_delta' | 'tool_call_end' | 'done' | 'error' | 'usage';
@@ -187,7 +188,6 @@ async function* streamAnthropicFallback(
   tools: ToolDefinition[],
   signal?: AbortSignal,
 ): AsyncGenerator<StreamDelta> {
-  const { createProvider } = await import('./llm-providers');
   const provider = createProvider(config);
   try {
     const response = await provider.chat(messages, tools);
@@ -216,7 +216,6 @@ async function* streamGeminiFallback(
   tools: ToolDefinition[],
   signal?: AbortSignal,
 ): AsyncGenerator<StreamDelta> {
-  const { createProvider } = await import('./llm-providers');
   const provider = createProvider(config);
   try {
     const response = await provider.chat(messages, tools);
