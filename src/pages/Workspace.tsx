@@ -10,7 +10,7 @@ import {
   Sparkles, Send, Square, RotateCcw, Settings, Terminal as TermIcon,
   FileText, Download, FolderOpen, MessageSquare, Eye, Key, Plus, Trash2,
   TestTube, Zap, X, GitBranch, History, Brain, ChevronRight, Edit3,
-  DollarSign, FileCode, Clock
+  DollarSign, FileCode, Clock, Search, Image as ImageIcon
 } from 'lucide-react';
 import { useI18n } from '../i18n';
 import { runAgent, type AgentEvent } from '../lib/agent-engine';
@@ -29,18 +29,19 @@ import { executeSlashCommand, isSlashCommand, type CommandContext } from '../lib
 import FileEditor from '../components/FileEditor';
 import Terminal from '../components/Terminal';
 import { SetupModal, shouldShowSetup } from '../components/SetupModal';
+import ImageInput from '../components/ImageInput';
+import ContextWindowIndicator from '../components/ContextWindowIndicator';
+import ConversationSearch from '../components/ConversationSearch';
+import PermissionDialog from '../components/PermissionDialog';
+import type { ThreadMessage, ImageAttachment } from '../lib/types';
+import { calculateContextUsage, shouldAutoCompact, compactMessages } from '../lib/context-window';
+import { PermissionManager, createPermissionRequest, needsPermission } from '../lib/permission-system';
+import { withRetry, isRetryableError } from '../lib/error-recovery';
+import { saveSession, loadSession, hasSavedSession, formatSessionAge } from '../lib/session-resume';
+import { exportConversation, downloadExport } from '../lib/conversation-export';
+import { convertImagesToAPIMessage } from '../lib/image-input';
 
 /* ─── Types ─── */
-interface ThreadMessage {
-  id: string;
-  type: 'user' | 'thinking' | 'tool_call' | 'console' | 'system' | 'error' | 'streaming';
-  content: string;
-  tool?: string;
-  result?: string;
-  timestamp: number;
-  collapsed?: boolean;
-}
-
 type RunStatus = 'idle' | 'running' | 'done' | 'error';
 type Tab = 'preview' | 'editor' | 'terminal' | 'files';
 
@@ -82,6 +83,12 @@ export default function Workspace() {
   // Streaming state
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
 
+  // New features state
+  const [images, setImages] = useState<ImageAttachment[]>([]);
+  const [showSearch, setShowSearch] = useState(false);
+  const [permissionRequest, setPermissionRequest] = useState<any>(null);
+  const permissionManagerRef = useRef(new PermissionManager());
+
   // Refs
   const abortRef = useRef<AbortController | null>(null);
   const threadRef = useRef<HTMLDivElement>(null);
@@ -100,6 +107,20 @@ export default function Workspace() {
       setProject(p);
     }
   }, []);
+
+  // Auto-save session
+  useEffect(() => {
+    if (project && messages.length > 0) {
+      const files = fs ? fs.exportAsJSON() : {};
+      saveSession({
+        projectId: project.id,
+        messages,
+        files,
+        timestamp: Date.now(),
+        prompt,
+      });
+    }
+  }, [messages, fs, project, prompt]);
 
   // Auto-scroll thread
   useEffect(() => {
@@ -140,6 +161,10 @@ export default function Workspace() {
           case 'm':
             e.preventDefault();
             setShowSettings(true);
+            break;
+          case 'f':
+            e.preventDefault();
+            setShowSearch(true);
             break;
         }
       }
@@ -280,6 +305,15 @@ export default function Workspace() {
         if (project && fsRef.current) {
           createCheckpoint(project, `Run complete: ${event.summary.slice(0, 50)}`, fsRef.current, messages.length);
         }
+        
+        // Auto-compact if context is getting full
+        setMessages(prev => {
+          const context = calculateContextUsage(prev);
+          if (shouldAutoCompact(context)) {
+            return compactMessages(prev, 15);
+          }
+          return prev;
+        });
         break;
     }
   }, [project, messages.length, streamingMessageId, settings]);
@@ -310,6 +344,28 @@ Requests: ${costTracker.requests.length}`;
       getInstructions: () => loadProjectInstructions().content,
       setInstructions: (content) => saveProjectInstructions(content),
       initProject: () => saveProjectInstructions(DEFAULT_INSTRUCTIONS_TEMPLATE),
+      exportConversation: (format) => {
+        const content = exportConversation(messages, format, project?.name || 'Untitled');
+        downloadExport(content, project?.name || 'conversation', format);
+      },
+      getContextStatus: () => {
+        const context = calculateContextUsage(messages);
+        return `Context: ${context.usedTokens.toLocaleString()} / ${context.maxTokens.toLocaleString()} tokens (${context.percentage.toFixed(1)}%)`;
+      },
+      clearPermissions: () => {
+        permissionManagerRef.current.clearRememberedPermissions();
+      },
+      resumeSession: () => {
+        const session = loadSession();
+        if (session) {
+          setMessages(session.messages);
+          if (session.files) {
+            const newFs = new VirtualFS();
+            Object.entries(session.files).forEach(([path, content]) => newFs.write(path, content));
+            setFs(newFs);
+          }
+        }
+      },
     };
 
     const result = executeSlashCommand(input, context);
@@ -551,6 +607,12 @@ Requests: ${costTracker.requests.length}`;
               <DollarSign size={10} /> {formatCost(costTracker.totalCost)}
             </button>
           )}
+          <div className="w-32">
+            <ContextWindowIndicator
+              context={calculateContextUsage(messages)}
+              onCompact={handleCompact}
+            />
+          </div>
           {project && (
             <button onClick={() => setShowProjectPicker(true)} className="text-xs px-2 py-0.5 rounded border hover:border-brand-500 transition-colors flex items-center gap-1"
               style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}>
@@ -664,7 +726,38 @@ Requests: ${costTracker.requests.length}`;
 
           {/* Input */}
           <div className="p-3 border-t" style={{ borderColor: 'var(--border)' }}>
+            {images.length > 0 && (
+              <div className="mb-2">
+                <ImageInput images={images} onImagesChange={setImages} />
+              </div>
+            )}
             <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  const input = document.createElement('input');
+                  input.type = 'file';
+                  input.accept = 'image/*';
+                  input.multiple = true;
+                  input.onchange = async (e) => {
+                    const files = (e.target as HTMLInputElement).files;
+                    if (files) {
+                      const { fileToImageAttachment } = await import('../lib/image-input');
+                      const newImages = [];
+                      for (const file of Array.from(files)) {
+                        const img = await fileToImageAttachment(file);
+                        newImages.push(img);
+                      }
+                      setImages([...images, ...newImages]);
+                    }
+                  };
+                  input.click();
+                }}
+                className="p-2 rounded-lg border hover:border-brand-500 transition-colors"
+                style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}
+                title="Attach images"
+              >
+                <ImageIcon size={16} />
+              </button>
               <input
                 ref={inputRef}
                 type="text"
@@ -676,6 +769,14 @@ Requests: ${costTracker.requests.length}`;
                 className="flex-1 px-3 py-2 rounded-lg text-sm border outline-none focus:ring-2 focus:ring-brand-500/50 transition-all disabled:opacity-50"
                 style={{ borderColor: 'var(--border)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text)' }}
               />
+              <button
+                onClick={() => setShowSearch(true)}
+                className="p-2 rounded-lg border hover:border-brand-500 transition-colors"
+                style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}
+                title="Search (Ctrl+F)"
+              >
+                <Search size={16} />
+              </button>
               <button onClick={handleRun} disabled={!prompt.trim() || status === 'running'}
                 className="p-2 rounded-lg bg-brand-600 text-white hover:bg-brand-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                 <Send size={16} />
@@ -789,6 +890,38 @@ Requests: ${costTracker.requests.length}`;
         {showCheckpoints && project && <CheckpointPicker checkpoints={project.checkpoints} onRestore={handleRestoreCheckpoint} onClose={() => setShowCheckpoints(false)} />}
         {showCostModal && <CostModal tracker={costTracker} onClose={() => setShowCostModal(false)} />}
         {showInstructionsModal && <InstructionsModal onClose={() => setShowInstructionsModal(false)} />}
+        {showSearch && (
+          <ConversationSearch
+            messages={messages}
+            onClose={() => setShowSearch(false)}
+            onNavigateToMessage={(id) => {
+              // Scroll to message
+              const element = document.getElementById(`msg-${id}`);
+              if (element) {
+                element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                element.classList.add('ring-2', 'ring-brand-500');
+                setTimeout(() => element.classList.remove('ring-2', 'ring-brand-500'), 2000);
+              }
+            }}
+          />
+        )}
+        {permissionRequest && (
+          <PermissionDialog
+            request={permissionRequest}
+            onApprove={(remember) => {
+              if (remember) {
+                permissionManagerRef.current.rememberPermission(permissionRequest.tool, true);
+              }
+              setPermissionRequest(null);
+            }}
+            onDeny={(remember) => {
+              if (remember) {
+                permissionManagerRef.current.rememberPermission(permissionRequest.tool, false);
+              }
+              setPermissionRequest(null);
+            }}
+          />
+        )}
       </AnimatePresence>
     </main>
   );

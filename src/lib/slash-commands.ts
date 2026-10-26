@@ -18,6 +18,10 @@ export interface CommandContext {
   getInstructions: () => string;
   setInstructions: (content: string) => void;
   initProject: () => void;
+  exportConversation?: (format: 'markdown' | 'json') => void;
+  getContextStatus?: () => string;
+  clearPermissions?: () => void;
+  resumeSession?: () => void;
 }
 
 export interface CommandResult {
@@ -112,6 +116,54 @@ Ctrl+Enter     Send message`,
     handler: (_, ctx) => {
       ctx.initProject();
       return { type: 'success', message: '✓ Project initialized with default instructions' };
+    },
+  },
+  {
+    name: '/export',
+    description: 'Export conversation to Markdown or JSON',
+    usage: '/export [md|json]',
+    handler: (args, ctx) => {
+      if (!ctx.exportConversation) {
+        return { type: 'error', message: 'Export not available' };
+      }
+      const format = args.trim() === 'json' ? 'json' : 'markdown';
+      ctx.exportConversation(format as 'markdown' | 'json');
+      return { type: 'success', message: `✓ Conversation exported as ${format}` };
+    },
+  },
+  {
+    name: '/context',
+    description: 'Show context window usage',
+    usage: '/context',
+    handler: (_, ctx) => {
+      if (!ctx.getContextStatus) {
+        return { type: 'error', message: 'Context tracking not available' };
+      }
+      return { type: 'info', message: ctx.getContextStatus() };
+    },
+  },
+  {
+    name: '/permissions',
+    description: 'Clear remembered permissions',
+    usage: '/permissions clear',
+    handler: (args, ctx) => {
+      if (args.trim() === 'clear' && ctx.clearPermissions) {
+        ctx.clearPermissions();
+        return { type: 'success', message: '✓ Permissions cleared' };
+      }
+      return { type: 'info', message: 'Usage: /permissions clear' };
+    },
+  },
+  {
+    name: '/resume',
+    description: 'Resume previous session',
+    usage: '/resume',
+    handler: (_, ctx) => {
+      if (!ctx.resumeSession) {
+        return { type: 'error', message: 'Session resume not available' };
+      }
+      ctx.resumeSession();
+      return { type: 'success', message: '✓ Session resumed' };
     },
   },
 ];
