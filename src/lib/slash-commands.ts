@@ -25,6 +25,7 @@ export interface CommandContext {
   gitCommit?: (message: string) => void;
   gitStatus?: () => string;
   gitLog?: () => string;
+  deploy?: (provider: string) => void;
 }
 
 export interface CommandResult {
@@ -49,6 +50,7 @@ export const SLASH_COMMANDS: SlashCommand[] = [
 /memory <text> Update project instructions
 /init          Initialize project with default instructions
 /git           Git version control commands
+/deploy        Deploy project to production
 
 Keyboard shortcuts:
 Ctrl+K         Compact conversation
@@ -211,6 +213,19 @@ Ctrl+Enter     Send message`,
 /git log               Show commit history` 
           };
       }
+    },
+  },
+  {
+    name: '/deploy',
+    description: 'Deploy project to production',
+    usage: '/deploy [vercel|netlify|github]',
+    handler: (args, ctx) => {
+      if (!ctx.deploy) {
+        return { type: 'error', message: 'Deploy not available' };
+      }
+      const provider = args.trim() || 'vercel';
+      ctx.deploy(provider);
+      return { type: 'success', message: `🚀 Deploying to ${provider}...` };
     },
   },
 ];

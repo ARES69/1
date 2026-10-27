@@ -10,7 +10,7 @@ import {
   Sparkles, Send, Square, RotateCcw, Settings, Terminal as TermIcon,
   FileText, Download, FolderOpen, MessageSquare, Eye, Key, Plus, Trash2,
   TestTube, Zap, X, GitBranch, History, Brain, ChevronRight, Edit3,
-  DollarSign, FileCode, Clock, Search, Image as ImageIcon
+  DollarSign, FileCode, Clock, Search, Image as ImageIcon, Rocket
 } from 'lucide-react';
 import { useI18n } from '../i18n';
 import { runAgent, type AgentEvent } from '../lib/agent-engine';
@@ -29,6 +29,7 @@ import { executeSlashCommand, isSlashCommand, type CommandContext } from '../lib
 import FileEditor from '../components/FileEditor';
 import Terminal from '../components/Terminal';
 import GitPanel from '../components/GitPanel';
+import DeployPanel from '../components/DeployPanel';
 import { SetupModal, shouldShowSetup } from '../components/SetupModal';
 import ImageInput from '../components/ImageInput';
 import ContextWindowIndicator from '../components/ContextWindowIndicator';
@@ -44,7 +45,7 @@ import { VirtualGit } from '../lib/virtual-git';
 
 /* ─── Types ─── */
 type RunStatus = 'idle' | 'running' | 'done' | 'error';
-type Tab = 'preview' | 'editor' | 'terminal' | 'files' | 'git';
+type Tab = 'preview' | 'editor' | 'terminal' | 'files' | 'git' | 'deploy';
 
 /* ─── Main Workspace ─── */
 export default function Workspace() {
@@ -400,6 +401,15 @@ Requests: ${costTracker.requests.length}`;
         if (history.length === 0) return 'No commits yet';
         return history.map(c => `${c.hash.substring(0, 7)} - ${c.message} (${c.author}, ${new Date(c.timestamp).toLocaleString()})`).join('\n');
       },
+      deploy: (provider) => {
+        setActiveTab('deploy');
+        setMessages(prev => [...prev, {
+          id: 'msg-' + Date.now(),
+          type: 'system',
+          content: `🚀 Opening deploy panel for ${provider}...`,
+          timestamp: Date.now(),
+        }]);
+      },
     };
 
     const result = executeSlashCommand(input, context);
@@ -630,6 +640,7 @@ Requests: ${costTracker.requests.length}`;
     { id: 'terminal', label: 'Terminal', icon: TermIcon },
     { id: 'files', label: 'Files', icon: FolderOpen },
     { id: 'git', label: 'Git', icon: GitBranch },
+    { id: 'deploy', label: 'Deploy', icon: Rocket },
   ];
 
   return (
@@ -956,6 +967,30 @@ Requests: ${costTracker.requests.length}`;
                     content: `✓ Switched to branch: ${branch}`,
                     timestamp: Date.now(),
                   }]);
+                }}
+              />
+            )}
+
+            {activeTab === 'deploy' && (
+              <DeployPanel
+                fs={fs}
+                projectName={project?.name || 'Untitled Project'}
+                onDeploy={(result) => {
+                  if (result.success) {
+                    setMessages(prev => [...prev, {
+                      id: 'msg-' + Date.now(),
+                      type: 'system',
+                      content: `🚀 Deployed to ${result.provider}: ${result.url}`,
+                      timestamp: Date.now(),
+                    }]);
+                  } else {
+                    setMessages(prev => [...prev, {
+                      id: 'msg-' + Date.now(),
+                      type: 'error',
+                      content: `❌ Deployment failed: ${result.error}`,
+                      timestamp: Date.now(),
+                    }]);
+                  }
                 }}
               />
             )}
