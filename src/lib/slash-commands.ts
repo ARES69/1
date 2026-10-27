@@ -22,6 +22,9 @@ export interface CommandContext {
   getContextStatus?: () => string;
   clearPermissions?: () => void;
   resumeSession?: () => void;
+  gitCommit?: (message: string) => void;
+  gitStatus?: () => string;
+  gitLog?: () => string;
 }
 
 export interface CommandResult {
@@ -45,6 +48,7 @@ export const SLASH_COMMANDS: SlashCommand[] = [
 /memory        Show project instructions (CLAUDE.md)
 /memory <text> Update project instructions
 /init          Initialize project with default instructions
+/git           Git version control commands
 
 Keyboard shortcuts:
 Ctrl+K         Compact conversation
@@ -164,6 +168,49 @@ Ctrl+Enter     Send message`,
       }
       ctx.resumeSession();
       return { type: 'success', message: '✓ Session resumed' };
+    },
+  },
+  {
+    name: '/git',
+    description: 'Git version control commands',
+    usage: '/git <commit|status|log>',
+    handler: (args, ctx) => {
+      const parts = args.trim().split(' ');
+      const subcommand = parts[0];
+      const subargs = parts.slice(1).join(' ');
+
+      switch (subcommand) {
+        case 'commit':
+          if (!ctx.gitCommit) {
+            return { type: 'error', message: 'Git not available' };
+          }
+          if (!subargs.trim()) {
+            return { type: 'error', message: 'Usage: /git commit <message>' };
+          }
+          ctx.gitCommit(subargs.trim());
+          return { type: 'success', message: `✓ Committed: ${subargs.trim()}` };
+        
+        case 'status':
+          if (!ctx.gitStatus) {
+            return { type: 'error', message: 'Git not available' };
+          }
+          return { type: 'info', message: ctx.gitStatus() };
+        
+        case 'log':
+          if (!ctx.gitLog) {
+            return { type: 'error', message: 'Git not available' };
+          }
+          return { type: 'info', message: ctx.gitLog() };
+        
+        default:
+          return { 
+            type: 'info', 
+            message: `Git commands:
+/git commit <message>  Create a commit
+/git status            Show working tree status
+/git log               Show commit history` 
+          };
+      }
     },
   },
 ];

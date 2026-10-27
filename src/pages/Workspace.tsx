@@ -28,6 +28,7 @@ import { loadProjectInstructions, saveProjectInstructions, DEFAULT_INSTRUCTIONS_
 import { executeSlashCommand, isSlashCommand, type CommandContext } from '../lib/slash-commands';
 import FileEditor from '../components/FileEditor';
 import Terminal from '../components/Terminal';
+import GitPanel from '../components/GitPanel';
 import { SetupModal, shouldShowSetup } from '../components/SetupModal';
 import ImageInput from '../components/ImageInput';
 import ContextWindowIndicator from '../components/ContextWindowIndicator';
@@ -39,10 +40,11 @@ import { PermissionManager } from '../lib/permission-system';
 import { saveSession, loadSession } from '../lib/session-resume';
 import { exportConversation, downloadExport } from '../lib/conversation-export';
 import { fileToImageAttachment } from '../lib/image-input';
+import { VirtualGit } from '../lib/virtual-git';
 
 /* ─── Types ─── */
 type RunStatus = 'idle' | 'running' | 'done' | 'error';
-type Tab = 'preview' | 'editor' | 'terminal' | 'files';
+type Tab = 'preview' | 'editor' | 'terminal' | 'files' | 'git';
 
 /* ─── Main Workspace ─── */
 export default function Workspace() {
@@ -87,6 +89,9 @@ export default function Workspace() {
   const [showSearch, setShowSearch] = useState(false);
   const [permissionRequest, setPermissionRequest] = useState<import('../lib/permission-system').PermissionRequest | null>(null);
   const permissionManagerRef = useRef(new PermissionManager());
+  
+  // Git state
+  const [git, setGit] = useState<VirtualGit>(new VirtualGit());
 
   // Refs
   const abortRef = useRef<AbortController | null>(null);
@@ -303,6 +308,13 @@ export default function Workspace() {
         setStatus('done');
         if (project && fsRef.current) {
           createCheckpoint(project, `Run complete: ${event.summary.slice(0, 50)}`, fsRef.current, messages.length);
+          
+          // Auto-commit to git
+          git.stageAll(fsRef.current);
+          const commit = git.commit(`AI: ${event.summary.slice(0, 60)}`, 'AI Agent', fsRef.current);
+          if (commit) {
+            setGit(new VirtualGit()); // Force re-render
+          }
         }
         
         // Auto-compact if context is getting full
@@ -364,6 +376,29 @@ Requests: ${costTracker.requests.length}`;
             setFs(newFs);
           }
         }
+      },
+      gitCommit: (message) => {
+        if (fs) {
+          git.stageAll(fs);
+          const commit = git.commit(message, 'AI Agent', fs);
+          if (commit) {
+            setGit(new VirtualGit()); // Force re-render
+          }
+        }
+      },
+      gitStatus: () => {
+        if (!fs) return 'No filesystem available';
+        const status = git.getStatus(fs);
+        const parts = [];
+        if (status.modified.length > 0) parts.push(`Modified: ${status.modified.join(', ')}`);
+        if (status.untracked.length > 0) parts.push(`Untracked: ${status.untracked.join(', ')}`);
+        if (status.deleted.length > 0) parts.push(`Deleted: ${status.deleted.join(', ')}`);
+        return parts.length > 0 ? parts.join('\n') : 'No changes';
+      },
+      gitLog: () => {
+        const history = git.getHistory(10);
+        if (history.length === 0) return 'No commits yet';
+        return history.map(c => `${c.hash.substring(0, 7)} - ${c.message} (${c.author}, ${new Date(c.timestamp).toLocaleString()})`).join('\n');
       },
     };
 
@@ -594,6 +629,7 @@ Requests: ${costTracker.requests.length}`;
     { id: 'editor', label: 'Editor', icon: Edit3 },
     { id: 'terminal', label: 'Terminal', icon: TermIcon },
     { id: 'files', label: 'Files', icon: FolderOpen },
+    { id: 'git', label: 'Git', icon: GitBranch },
   ];
 
   return (
@@ -880,6 +916,48 @@ Requests: ${costTracker.requests.length}`;
                   </div>
                 )}
               </div>
+            )}
+
+            {activeTab === 'git' && fs && (
+              <GitPanel
+                git={git}
+                fs={fs}
+                onCommit={(message) => {
+                  git.stageAll(fs);
+                  const commit = git.commit(message, 'AI Agent', fs);
+                  if (commit) {
+                    setGit(new VirtualGit()); // Force re-render
+                    setMessages(prev => [...prev, {
+                      id: 'msg-' + Date.now(),
+                      type: 'system',
+                      content: `✓ Committed: ${message} (${commit.hash.substring(0, 7)})`,
+                      timestamp: Date.now(),
+                    }]);
+                  }
+                }}
+                onCheckout={(hash) => {
+                  if (git.checkoutCommit(hash, fs)) {
+                    setFs(new VirtualFS()); // Force re-render
+                    setGit(new VirtualGit()); // Force re-render
+                    setMessages(prev => [...prev, {
+                      id: 'msg-' + Date.now(),
+                      type: 'system',
+                      content: `✓ Checked out commit ${hash.substring(0, 7)}`,
+                      timestamp: Date.now(),
+                    }]);
+                  }
+                }}
+                onBranchChange={(branch) => {
+                  git.checkout(branch);
+                  setGit(new VirtualGit()); // Force re-render
+                  setMessages(prev => [...prev, {
+                    id: 'msg-' + Date.now(),
+                    type: 'system',
+                    content: `✓ Switched to branch: ${branch}`,
+                    timestamp: Date.now(),
+                  }]);
+                }}
+              />
             )}
           </div>
         </div>
