@@ -10,7 +10,8 @@ import {
   Sparkles, Send, Square, RotateCcw, Settings, Terminal as TermIcon,
   FileText, Download, FolderOpen, MessageSquare, Eye, Key, Plus, Trash2,
   TestTube, Zap, X, GitBranch, History, Brain, ChevronRight, Edit3,
-  DollarSign, FileCode, Clock, Search, Image as ImageIcon, Rocket
+  DollarSign, FileCode, Clock, Search, Image as ImageIcon, Rocket,
+  Bug, Users, Database, Code2
 } from 'lucide-react';
 import { useI18n } from '../i18n';
 import { runAgent, type AgentEvent } from '../lib/agent-engine';
@@ -44,10 +45,14 @@ import { fileToImageAttachment } from '../lib/image-input';
 import { VirtualGit } from '../lib/virtual-git';
 import TemplateGallery from '../components/TemplateGallery';
 import { applyTemplate, getTemplate, type Template } from '../lib/template-library';
+import { analyzeError, comprehensiveAnalysis } from '../lib/ai-debugger';
+import { loadMCPServers, type MCPServer } from '../lib/mcp-client';
+import { CollaborativeSession, type CollaborativeUser } from '../lib/collaborative';
+import DebugPanel from '../components/DebugPanel';
 
 /* ─── Types ─── */
 type RunStatus = 'idle' | 'running' | 'done' | 'error';
-type Tab = 'preview' | 'editor' | 'terminal' | 'files' | 'git' | 'deploy';
+type Tab = 'preview' | 'editor' | 'terminal' | 'files' | 'git' | 'deploy' | 'debug';
 
 /* ─── Main Workspace ─── */
 export default function Workspace() {
@@ -669,6 +674,7 @@ Requests: ${costTracker.requests.length}`;
     { id: 'files', label: 'Files', icon: FolderOpen },
     { id: 'git', label: 'Git', icon: GitBranch },
     { id: 'deploy', label: 'Deploy', icon: Rocket },
+    { id: 'debug', label: 'Debug', icon: Bug },
   ];
 
   return (
@@ -1022,6 +1028,20 @@ Requests: ${costTracker.requests.length}`;
                       timestamp: Date.now(),
                     }]);
                   }
+                }}
+              />
+            )}
+
+            {activeTab === 'debug' && (
+              <DebugPanel
+                onAnalyzeError={(error: string, code?: string) => {
+                  const analysis = analyzeError(error, code);
+                  setMessages(prev => [...prev, {
+                    id: 'msg-' + Date.now(),
+                    type: 'system',
+                    content: `🔍 Error Analysis Complete: ${analysis.errorType} (${analysis.severity})`,
+                    timestamp: Date.now(),
+                  }]);
                 }}
               />
             )}

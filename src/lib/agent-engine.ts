@@ -7,6 +7,8 @@ import { createProvider, type LLMMessage, type LLMResponse, type ToolDefinition,
 import { streamChat, type StreamDelta } from './streaming';
 import { VirtualFS } from './virtual-fs';
 import type { ProviderKey } from './settings';
+import { PythonExecutor, SQLExecutor } from './code-executors';
+import { analyzeError } from './ai-debugger';
 
 /* ─── Event types emitted during agent execution ─── */
 export type AgentEvent =
@@ -94,6 +96,40 @@ const TOOLS: ToolDefinition[] = [
     },
   },
   {
+    name: 'run_python',
+    description: 'Execute Python code in the sandbox. Supports data analysis, calculations, and scripting.',
+    parameters: {
+      type: 'object',
+      properties: {
+        code: { type: 'string', description: 'Python code to execute' },
+      },
+      required: ['code'],
+    },
+  },
+  {
+    name: 'run_sql',
+    description: 'Execute SQL query on in-memory database. Supports CREATE TABLE, INSERT, SELECT.',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'SQL query to execute' },
+      },
+      required: ['query'],
+    },
+  },
+  {
+    name: 'analyze_error',
+    description: 'Analyze an error message and get debugging suggestions with fix recommendations.',
+    parameters: {
+      type: 'object',
+      properties: {
+        error: { type: 'string', description: 'Error message or stack trace to analyze' },
+        code: { type: 'string', description: 'Related code context (optional)' },
+      },
+      required: ['error'],
+    },
+  },
+  {
     name: 'finish',
     description: 'Signal that the artifact is complete and ready for delivery.',
     parameters: {
@@ -129,10 +165,14 @@ You have access to a virtual filesystem. All files you create will be available 
 class ToolExecutor {
   private fs: VirtualFS;
   private onEvent: (event: AgentEvent) => void;
+  private pythonExecutor: PythonExecutor;
+  private sqlExecutor: SQLExecutor;
 
   constructor(fs: VirtualFS, onEvent: (event: AgentEvent) => void) {
     this.fs = fs;
     this.onEvent = onEvent;
+    this.pythonExecutor = new PythonExecutor();
+    this.sqlExecutor = new SQLExecutor();
   }
 
   async execute(toolCall: ToolCall): Promise<string> {
@@ -188,6 +228,49 @@ class ToolExecutor {
         case 'run_code': {
           const { code } = args;
           return this.executeCode(code);
+        }
+
+        case 'run_python': {
+          const { code } = args;
+          const result = await this.pythonExecutor.execute(code);
+          if (result.error) {
+            this.onEvent({ type: 'console', content: `[Python Error] ${result.error}` });
+            return `✗ Python execution error: ${result.error}`;
+          }
+          if (result.output) {
+            this.onEvent({ type: 'console', content: result.output });
+          }
+          return result.output || '✓ Python code executed successfully';
+        }
+
+        case 'run_sql': {
+          const { query } = args;
+          const result = this.sqlExecutor.execute(query);
+          if (result.error) {
+            this.onEvent({ type: 'console', content: `[SQL Error] ${result.error}` });
+            return `✗ SQL execution error: ${result.error}`;
+          }
+          if (result.output) {
+            this.onEvent({ type: 'console', content: result.output });
+          }
+          return result.output || '✓ SQL query executed successfully';
+        }
+
+        case 'analyze_error': {
+          const { error, code } = args;
+          const analysis = analyzeError(error, code);
+          let result = `🔍 Error Analysis:\n`;
+          result += `Type: ${analysis.errorType}\n`;
+          result += `Severity: ${analysis.severity}\n`;
+          if (analysis.file) result += `File: ${analysis.file}:${analysis.line || '?'}\n`;
+          result += `\n💡 Suggestions:\n`;
+          analysis.suggestions.forEach((s, i) => {
+            result += `${i + 1}. ${s.description} (confidence: ${s.confidence})\n`;
+            result += `   ${s.explanation}\n`;
+            if (s.code) result += `   Code: ${s.code}\n`;
+          });
+          this.onEvent({ type: 'console', content: result });
+          return result;
         }
 
         case 'finish': {
