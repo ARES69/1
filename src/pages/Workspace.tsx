@@ -11,7 +11,7 @@ import {
   FileText, Download, FolderOpen, MessageSquare, Eye, Key, Plus, Trash2,
   TestTube, Zap, X, GitBranch, History, Brain, ChevronRight, Edit3,
   DollarSign, FileCode, Clock, Search, Image as ImageIcon, Rocket,
-  Bug, Users, Database, Code2
+  Bug, Users, Database, Code2, Plug, Share2
 } from 'lucide-react';
 import { useI18n } from '../i18n';
 import { runAgent, type AgentEvent } from '../lib/agent-engine';
@@ -49,10 +49,11 @@ import { analyzeError, comprehensiveAnalysis } from '../lib/ai-debugger';
 import { loadMCPServers, type MCPServer } from '../lib/mcp-client';
 import { CollaborativeSession, type CollaborativeUser } from '../lib/collaborative';
 import DebugPanel from '../components/DebugPanel';
+import MCPPanel from '../components/MCPPanel';
 
 /* ─── Types ─── */
 type RunStatus = 'idle' | 'running' | 'done' | 'error';
-type Tab = 'preview' | 'editor' | 'terminal' | 'files' | 'git' | 'deploy' | 'debug';
+type Tab = 'preview' | 'editor' | 'terminal' | 'files' | 'git' | 'deploy' | 'debug' | 'mcp' | 'collaboration';
 
 /* ─── Main Workspace ─── */
 export default function Workspace() {
@@ -675,6 +676,8 @@ Requests: ${costTracker.requests.length}`;
     { id: 'git', label: 'Git', icon: GitBranch },
     { id: 'deploy', label: 'Deploy', icon: Rocket },
     { id: 'debug', label: 'Debug', icon: Bug },
+    { id: 'mcp', label: 'MCP', icon: Plug },
+    { id: 'collaboration', label: 'Collab', icon: Share2 },
   ];
 
   return (
@@ -1044,6 +1047,28 @@ Requests: ${costTracker.requests.length}`;
                   }]);
                 }}
               />
+            )}
+
+            {activeTab === 'mcp' && (
+              <MCPPanel />
+            )}
+
+            {activeTab === 'collaboration' && (
+              <div className="h-full flex items-center justify-center bg-[var(--bg)]">
+                <div className="text-center p-8">
+                  <Share2 size={64} className="mx-auto mb-4 text-brand-500/30" />
+                  <h3 className="text-xl font-bold mb-2" style={{ color: 'var(--text)' }}>Collaboration</h3>
+                  <p className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>
+                    Real-time collaboration features coming soon
+                  </p>
+                  <div className="space-y-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
+                    <p>✓ Presence indicators</p>
+                    <p>✓ Conflict resolution</p>
+                    <p>✓ Real-time sync</p>
+                    <p>✓ Chat integration</p>
+                  </div>
+                </div>
+              </div>
             )}
           </div>
         </div>
