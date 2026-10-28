@@ -26,6 +26,7 @@ export interface CommandContext {
   gitStatus?: () => string;
   gitLog?: () => string;
   deploy?: (provider: string) => void;
+  showTemplates?: () => void;
 }
 
 export interface CommandResult {
@@ -51,6 +52,7 @@ export const SLASH_COMMANDS: SlashCommand[] = [
 /init          Initialize project with default instructions
 /git           Git version control commands
 /deploy        Deploy project to production
+/template      Open template gallery
 
 Keyboard shortcuts:
 Ctrl+K         Compact conversation
@@ -226,6 +228,18 @@ Ctrl+Enter     Send message`,
       const provider = args.trim() || 'vercel';
       ctx.deploy(provider);
       return { type: 'success', message: `🚀 Deploying to ${provider}...` };
+    },
+  },
+  {
+    name: '/template',
+    description: 'Open template gallery',
+    usage: '/template',
+    handler: (_, ctx) => {
+      if (!ctx.showTemplates) {
+        return { type: 'error', message: 'Templates not available' };
+      }
+      ctx.showTemplates();
+      return { type: 'success', message: '📋 Opening template gallery...' };
     },
   },
 ];

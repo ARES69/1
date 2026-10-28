@@ -42,6 +42,8 @@ import { saveSession, loadSession } from '../lib/session-resume';
 import { exportConversation, downloadExport } from '../lib/conversation-export';
 import { fileToImageAttachment } from '../lib/image-input';
 import { VirtualGit } from '../lib/virtual-git';
+import TemplateGallery from '../components/TemplateGallery';
+import { applyTemplate, getTemplate, type Template } from '../lib/template-library';
 
 /* ─── Types ─── */
 type RunStatus = 'idle' | 'running' | 'done' | 'error';
@@ -78,6 +80,7 @@ export default function Workspace() {
   const [showCostModal, setShowCostModal] = useState(false);
   const [showInstructionsModal, setShowInstructionsModal] = useState(false);
   const [showSetup, setShowSetup] = useState(shouldShowSetup());
+  const [showTemplateGallery, setShowTemplateGallery] = useState(false);
 
   // Cost tracking
   const [costTracker, setCostTracker] = useState<CostTracker>(createCostTracker());
@@ -410,6 +413,9 @@ Requests: ${costTracker.requests.length}`;
           timestamp: Date.now(),
         }]);
       },
+      showTemplates: () => {
+        setShowTemplateGallery(true);
+      },
     };
 
     const result = executeSlashCommand(input, context);
@@ -551,6 +557,28 @@ Requests: ${costTracker.requests.length}`;
     setCostTracker(createCostTracker());
   };
 
+  // Template operations
+  const handleApplyTemplate = (template: Template) => {
+    const newFs = new VirtualFS();
+    applyTemplate(template, newFs);
+    setFs(newFs);
+    fsRef.current = newFs;
+    setShowTemplateGallery(false);
+    
+    // Auto-commit template
+    const gitCommit = new VirtualGit();
+    gitCommit.stageAll(newFs);
+    gitCommit.commit(`Apply template: ${template.name}`, 'AI Agent', newFs);
+    setGit(gitCommit);
+    
+    setMessages(prev => [...prev, {
+      id: 'msg-' + Date.now(),
+      type: 'system',
+      content: `📋 Applied template: ${template.name}`,
+      timestamp: Date.now(),
+    }]);
+  };
+
   // File operations
   const handleOpenFile = (path: string) => {
     if (!fs) return;
@@ -686,6 +714,9 @@ Requests: ${costTracker.requests.length}`;
           </button>
           <button onClick={() => setShowCheckpoints(true)} disabled={!project || project.checkpoints.length === 0} className="flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors hover:bg-brand-500/10 disabled:opacity-30" style={{ color: 'var(--text-muted)' }} title="Checkpoints">
             <Clock size={14} /> {project?.checkpoints.length || 0}
+          </button>
+          <button onClick={() => setShowTemplateGallery(true)} className="flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors hover:bg-brand-500/10" style={{ color: 'var(--text-muted)' }} title="Templates">
+            <FileText size={14} /> Templates
           </button>
           {status === 'running' && (
             <button onClick={handleStop} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-colors">
@@ -1012,6 +1043,13 @@ Requests: ${costTracker.requests.length}`;
         {showCheckpoints && project && <CheckpointPicker checkpoints={project.checkpoints} onRestore={handleRestoreCheckpoint} onClose={() => setShowCheckpoints(false)} />}
         {showCostModal && <CostModal tracker={costTracker} onClose={() => setShowCostModal(false)} />}
         {showInstructionsModal && <InstructionsModal onClose={() => setShowInstructionsModal(false)} />}
+        {showTemplateGallery && (
+          <TemplateGallery
+            isOpen={showTemplateGallery}
+            onClose={() => setShowTemplateGallery(false)}
+            onApplyTemplate={handleApplyTemplate}
+          />
+        )}
         {showSearch && (
           <ConversationSearch
             messages={messages}
