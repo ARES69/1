@@ -11,7 +11,7 @@ import {
   FileText, Download, FolderOpen, MessageSquare, Eye, Key, Plus, Trash2,
   TestTube, Zap, X, GitBranch, History, Brain, ChevronRight, Edit3,
   DollarSign, FileCode, Clock, Search, Image as ImageIcon, Rocket,
-  Bug, Users, Database, Code2, Plug, Share2
+  Bug, Users, Database, Code2, Plug, Share2, BarChart3, Workflow, Shield, Package
 } from 'lucide-react';
 import { useI18n } from '../i18n';
 import { runAgent, type AgentEvent } from '../lib/agent-engine';
@@ -50,10 +50,14 @@ import { loadMCPServers, type MCPServer } from '../lib/mcp-client';
 import { CollaborativeSession, type CollaborativeUser } from '../lib/collaborative';
 import DebugPanel from '../components/DebugPanel';
 import MCPPanel from '../components/MCPPanel';
+import AnalyticsDashboard from '../components/AnalyticsDashboard';
+import WorkflowEditor from '../components/WorkflowEditor';
+import SecurityPanel from '../components/SecurityPanel';
+import PluginManager from '../components/PluginManager';
 
 /* ─── Types ─── */
 type RunStatus = 'idle' | 'running' | 'done' | 'error';
-type Tab = 'preview' | 'editor' | 'terminal' | 'files' | 'git' | 'deploy' | 'debug' | 'mcp' | 'collaboration';
+type Tab = 'preview' | 'editor' | 'terminal' | 'files' | 'git' | 'deploy' | 'debug' | 'mcp' | 'collaboration' | 'analytics' | 'workflows' | 'security' | 'plugins';
 
 /* ─── Main Workspace ─── */
 export default function Workspace() {
@@ -678,6 +682,10 @@ Requests: ${costTracker.requests.length}`;
     { id: 'debug', label: 'Debug', icon: Bug },
     { id: 'mcp', label: 'MCP', icon: Plug },
     { id: 'collaboration', label: 'Collab', icon: Share2 },
+    { id: 'analytics', label: 'Analytics', icon: BarChart3 },
+    { id: 'workflows', label: 'Workflows', icon: Workflow },
+    { id: 'security', label: 'Security', icon: Shield },
+    { id: 'plugins', label: 'Plugins', icon: Package },
   ];
 
   return (
@@ -1069,6 +1077,22 @@ Requests: ${costTracker.requests.length}`;
                   </div>
                 </div>
               </div>
+            )}
+
+            {activeTab === 'analytics' && (
+              <AnalyticsDashboard />
+            )}
+
+            {activeTab === 'workflows' && (
+              <WorkflowEditor />
+            )}
+
+            {activeTab === 'security' && (
+              <SecurityPanel />
+            )}
+
+            {activeTab === 'plugins' && (
+              <PluginManager />
             )}
           </div>
         </div>
