@@ -56,6 +56,10 @@ cd RS-BUILDER
 # Установить зависимости
 npm install
 
+# Настроить переменные окружения
+cp .env.example .env
+# Отредактируйте .env и добавьте ваши API ключи
+
 # Запустить dev сервер
 npm run dev
 
@@ -63,7 +67,30 @@ npm run dev
 open http://localhost:5173
 ```
 
-### Настройка API ключа
+### 🔐 Настройка аутентификации
+
+RS-BUILDER использует **Supabase Auth** для безопасной серверной аутентификации:
+
+1. Создайте проект на [supabase.com](https://supabase.com)
+2. Выполните SQL схему из `supabase/schema.sql` в SQL Editor
+3. Настройте OAuth провайдеры (Google, GitHub) в Supabase Dashboard
+4. Добавьте API ключи в `.env`:
+   ```bash
+   VITE_SUPABASE_URL=https://your-project.supabase.co
+   VITE_SUPABASE_ANON_KEY=your-anon-key
+   ```
+
+📖 **Подробная инструкция:** [AUTH_SETUP.md](./AUTH_SETUP.md)
+
+**Возможности аутентификации:**
+- ✅ Email/Password регистрация и вход
+- ✅ OAuth (Google, GitHub)
+- ✅ JWT токены с автоматическим обновлением
+- ✅ Сброс и обновление пароля
+- ✅ Row Level Security (RLS)
+- ✅ Управление сессиями
+
+### Настройка LLM API ключа
 
 1. Получите бесплатный API ключ на [OpenRouter](https://openrouter.ai/keys)
 2. Откройте Workspace в RS-BUILDER
