@@ -67,28 +67,17 @@ npm run dev
 open http://localhost:5173
 ```
 
-### 🔐 Настройка аутентификации
+### 🔐 Аутентификация
 
-RS-BUILDER использует **Supabase Auth** для безопасной серверной аутентификации:
+RS-BUILDER использует **локальную аутентификацию** через localStorage:
 
-1. Создайте проект на [supabase.com](https://supabase.com)
-2. Выполните SQL схему из `supabase/schema.sql` в SQL Editor
-3. Настройте OAuth провайдеры (Google, GitHub) в Supabase Dashboard
-4. Добавьте API ключи в `.env`:
-   ```bash
-   VITE_SUPABASE_URL=https://your-project.supabase.co
-   VITE_SUPABASE_ANON_KEY=your-anon-key
-   ```
-
-📖 **Подробная инструкция:** [AUTH_SETUP.md](./AUTH_SETUP.md)
-
-**Возможности аутентификации:**
 - ✅ Email/Password регистрация и вход
-- ✅ OAuth (Google, GitHub)
-- ✅ JWT токены с автоматическим обновлением
-- ✅ Сброс и обновление пароля
-- ✅ Row Level Security (RLS)
-- ✅ Управление сессиями
+- ✅ Защита маршрутов — без регистрации нельзя попасть в workspace
+- ✅ Хеширование паролей
+- ✅ Сессии сохраняются между перезагрузками
+- ✅ 50 бесплатных кредитов при регистрации
+
+**Важно:** Регистрация обязательна для доступа к workspace.
 
 ### Настройка LLM API ключа
 

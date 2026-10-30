@@ -2,13 +2,11 @@ import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Header } from './components/Header';
 import { Footer } from './components/Footer';
+import ProtectedRoute from './components/ProtectedRoute';
 import Home from './pages/Home';
 import Pricing from './pages/Pricing';
 import Workspace from './pages/Workspace';
 import Auth from './pages/Auth';
-import AuthCallback from './pages/AuthCallback';
-import ForgotPassword from './pages/ForgotPassword';
-import ResetPassword from './pages/ResetPassword';
 import Blog from './pages/Blog';
 import Legal from './pages/Legal';
 import { I18nProvider } from './i18n';
@@ -33,12 +31,13 @@ function Layout() {
           <Routes location={location}>
             <Route path="/" element={<Home />} />
             <Route path="/pricing" element={<Pricing />} />
-            <Route path="/app" element={<Workspace />} />
+            <Route path="/app" element={
+              <ProtectedRoute>
+                <Workspace />
+              </ProtectedRoute>
+            } />
             <Route path="/login" element={<Auth />} />
             <Route path="/signup" element={<Auth />} />
-            <Route path="/auth/callback" element={<AuthCallback />} />
-            <Route path="/forgot-password" element={<ForgotPassword />} />
-            <Route path="/auth/reset-password" element={<ResetPassword />} />
             <Route path="/blog" element={<Blog />} />
             <Route path="/blog/:slug" element={<Blog />} />
             <Route path="/legal/:slug" element={<Legal />} />
