@@ -31,72 +31,62 @@ function Hero() {
   ];
 
   return (
-    <section className="relative pt-32 pb-20 overflow-hidden">
-      {/* Background gradient */}
-      <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[600px] rounded-full opacity-20"
-          style={{ background: 'radial-gradient(ellipse, rgba(99,102,241,0.3), transparent 70%)' }} />
-      </div>
-
-      <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <section className="relative pt-24 pb-16 bg-[var(--bg)]">
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
+          initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
-          className="text-center max-w-4xl mx-auto"
+          transition={{ duration: 0.4 }}
+          className="text-center max-w-3xl mx-auto"
         >
           {/* Badge */}
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-sm font-medium mb-6 border"
-            style={{ borderColor: 'var(--border)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-secondary)' }}
-          >
-            <Zap size={14} className="text-brand-500" />
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded text-xs font-medium mb-6 bg-brand-50 dark:bg-brand-950/20 text-brand-600 dark:text-brand-400 border border-brand-200 dark:border-brand-800">
+            <Zap size={12} />
             {t.hero.badge}
           </div>
 
           {/* Title */}
-          <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold tracking-tight mb-6" style={{ color: 'var(--text)' }}>
+          <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold tracking-tight mb-4 text-[var(--text)]">
             {t.hero.title}{' '}
-            <span className="gradient-text">{t.hero.titleHighlight}</span>
+            <span className="text-brand-600 dark:text-brand-400">{t.hero.titleHighlight}</span>
             {t.hero.titleEnd}
           </h1>
 
           {/* Subtitle */}
-          <p className="text-lg sm:text-xl max-w-2xl mx-auto mb-10" style={{ color: 'var(--text-secondary)' }}>
+          <p className="text-base sm:text-lg max-w-2xl mx-auto mb-8 text-[var(--text-secondary)]">
             {t.hero.subtitle}
           </p>
 
           {/* Composer */}
           <form onSubmit={handleSubmit} className="max-w-2xl mx-auto mb-6">
-            <div className="relative flex items-center rounded-2xl border shadow-lg transition-all focus-within:ring-2 focus-within:ring-brand-500/50"
-              style={{ borderColor: 'var(--border)', backgroundColor: 'var(--card)' }}
+            <div className="relative flex items-center rounded-lg border bg-[var(--card)] transition-all focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-500/10"
+              style={{ borderColor: 'var(--border)' }}
             >
-              <Sparkles size={20} className="absolute left-4 text-brand-500" />
+              <Sparkles size={16} className="absolute left-3 text-brand-600 dark:text-brand-400" />
               <input
                 type="text"
                 value={prompt}
                 onChange={e => setPrompt(e.target.value)}
                 placeholder={t.hero.placeholder}
-                className="flex-1 py-4 pl-12 pr-32 bg-transparent outline-none text-base"
-                style={{ color: 'var(--text)' }}
+                className="flex-1 py-2.5 pl-9 pr-28 bg-transparent outline-none text-sm text-[var(--text)]"
               />
               <button
                 type="submit"
-                className="absolute right-2 px-5 py-2.5 rounded-xl bg-brand-600 text-white text-sm font-medium hover:bg-brand-700 transition-colors flex items-center gap-2"
+                className="absolute right-1.5 px-3 py-1.5 rounded bg-brand-600 text-white text-xs font-medium hover:bg-brand-700 transition-colors flex items-center gap-1.5"
               >
                 {t.hero.cta}
-                <ArrowRight size={14} />
+                <ArrowRight size={12} />
               </button>
             </div>
           </form>
 
           {/* Scenario chips */}
-          <div className="flex flex-wrap justify-center gap-2 mb-10">
+          <div className="flex flex-wrap justify-center gap-1.5 mb-8">
             {scenarios.map(s => (
               <button
                 key={s}
                 onClick={() => { setPrompt(s); navigate('/app', { state: { initialPrompt: s } }); }}
-                className="px-3 py-1.5 rounded-full text-xs font-medium border transition-all hover:border-brand-500 hover:text-brand-400"
-                style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}
+                className="px-2.5 py-1 rounded text-xs font-medium border border-[var(--border)] text-[var(--text-muted)] hover:border-brand-500 hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
               >
                 {s}
               </button>
@@ -104,18 +94,17 @@ function Hero() {
           </div>
 
           {/* CTA buttons */}
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
             <Link
               to="/app"
-              className="px-8 py-3 rounded-xl bg-brand-600 text-white font-semibold hover:bg-brand-700 transition-colors flex items-center gap-2"
+              className="px-6 py-2 rounded bg-brand-600 text-white text-sm font-medium hover:bg-brand-700 transition-colors flex items-center gap-2"
             >
-              <Play size={18} />
+              <Play size={14} />
               {t.hero.cta}
             </Link>
             <a
               href="#examples"
-              className="px-8 py-3 rounded-xl border font-semibold transition-colors hover:border-brand-500"
-              style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }}
+              className="px-6 py-2 rounded border border-[var(--border)] text-sm font-medium text-[var(--text-secondary)] hover:border-brand-500 hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
             >
               {t.hero.ctaSecondary}
             </a>
@@ -124,57 +113,57 @@ function Hero() {
 
         {/* Live preview mock */}
         <motion.div
-          initial={{ opacity: 0, y: 40 }}
+          initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8, delay: 0.3 }}
-          className="mt-16 max-w-5xl mx-auto"
+          transition={{ duration: 0.5, delay: 0.2 }}
+          className="mt-12 max-w-5xl mx-auto"
         >
-          <div className="rounded-2xl border overflow-hidden shadow-2xl" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--card)' }}>
+          <div className="rounded-lg border overflow-hidden bg-[var(--card)]" style={{ borderColor: 'var(--border)' }}>
             {/* Window chrome */}
-            <div className="flex items-center gap-2 px-4 py-3 border-b" style={{ borderColor: 'var(--border)' }}>
-              <div className="flex gap-1.5">
-                <div className="w-3 h-3 rounded-full bg-red-400" />
-                <div className="w-3 h-3 rounded-full bg-yellow-400" />
-                <div className="w-3 h-3 rounded-full bg-green-400" />
+            <div className="flex items-center gap-2 px-3 py-2 border-b bg-[var(--bg-secondary)]" style={{ borderColor: 'var(--border)' }}>
+              <div className="flex gap-1">
+                <div className="w-2.5 h-2.5 rounded-full bg-red-400" />
+                <div className="w-2.5 h-2.5 rounded-full bg-yellow-400" />
+                <div className="w-2.5 h-2.5 rounded-full bg-green-400" />
               </div>
               <div className="flex-1 text-center">
-                <span className="text-xs font-mono px-3 py-1 rounded" style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-muted)' }}>
+                <span className="text-xs font-mono px-2 py-0.5 rounded bg-[var(--bg-tertiary)] text-[var(--text-muted)]">
                   rs-builder.app/workspace
                 </span>
               </div>
             </div>
             {/* Content */}
-            <div className="grid grid-cols-1 md:grid-cols-3 min-h-[300px]">
+            <div className="grid grid-cols-1 md:grid-cols-3 min-h-[280px]">
               {/* Thread panel */}
-              <div className="p-4 border-r space-y-3" style={{ borderColor: 'var(--border)' }}>
-                <div className="flex items-center gap-2 text-xs font-medium" style={{ color: 'var(--text-muted)' }}>
-                  <Terminal size={12} /> Thread
+              <div className="p-3 border-r space-y-2 bg-[var(--bg-secondary)]" style={{ borderColor: 'var(--border)' }}>
+                <div className="flex items-center gap-1.5 text-xs font-medium text-[var(--text-muted)]">
+                  <Terminal size={11} /> Thread
                 </div>
-                <div className="space-y-2">
-                  <div className="p-2 rounded-lg text-xs" style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-secondary)' }}>
-                    🧠 Planning: analyze requirements...
+                <div className="space-y-1.5">
+                  <div className="p-1.5 rounded text-xs bg-[var(--bg-tertiary)] text-[var(--text-secondary)]">
+                    🧠 Planning...
                   </div>
-                  <div className="p-2 rounded-lg text-xs" style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-secondary)' }}>
-                    🔧 Tool: write_file("index.html")
+                  <div className="p-1.5 rounded text-xs bg-[var(--bg-tertiary)] text-[var(--text-secondary)]">
+                    🔧 write_file("index.html")
                   </div>
-                  <div className="p-2 rounded-lg text-xs" style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-secondary)' }}>
-                    ✅ Step 3/5 complete
+                  <div className="p-1.5 rounded text-xs bg-[var(--bg-tertiary)] text-[var(--text-secondary)]">
+                    ✅ Step 3/5
                   </div>
                 </div>
               </div>
               {/* Preview panel */}
-              <div className="col-span-2 p-4">
-                <div className="flex items-center gap-2 text-xs font-medium mb-3" style={{ color: 'var(--text-muted)' }}>
-                  <Monitor size={12} /> Preview
+              <div className="col-span-2 p-3">
+                <div className="flex items-center gap-1.5 text-xs font-medium mb-2 text-[var(--text-muted)]">
+                  <Monitor size={11} /> Preview
                 </div>
-                <div className="rounded-lg border overflow-hidden h-48 flex items-center justify-center"
-                  style={{ borderColor: 'var(--border)', backgroundColor: 'var(--bg-tertiary)' }}
+                <div className="rounded border overflow-hidden h-44 flex items-center justify-center bg-[var(--bg-tertiary)]"
+                  style={{ borderColor: 'var(--border)' }}
                 >
                   <div className="text-center">
-                    <div className="w-12 h-12 mx-auto mb-3 rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center animate-pulse-glow">
-                      <Sparkles size={24} className="text-white" />
+                    <div className="w-10 h-10 mx-auto mb-2 rounded bg-brand-600 flex items-center justify-center">
+                      <Sparkles size={18} className="text-white" />
                     </div>
-                    <p className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>Live artifact preview</p>
+                    <p className="text-xs font-medium text-[var(--text-secondary)]">Live artifact preview</p>
                   </div>
                 </div>
               </div>
@@ -192,30 +181,29 @@ function Features() {
   const icons = [Cpu, Globe, Monitor, Layers, Download, RefreshCw];
 
   return (
-    <section className="py-20" style={{ backgroundColor: 'var(--bg-secondary)' }}>
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="text-center mb-12">
-          <h2 className="text-3xl sm:text-4xl font-bold mb-4" style={{ color: 'var(--text)' }}>{t.features.title}</h2>
-          <p className="text-lg" style={{ color: 'var(--text-secondary)' }}>{t.features.subtitle}</p>
+    <section className="py-16 bg-[var(--bg-secondary)]">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="text-center mb-10">
+          <h2 className="text-2xl sm:text-3xl font-bold mb-3 text-[var(--text)]">{t.features.title}</h2>
+          <p className="text-base text-[var(--text-secondary)]">{t.features.subtitle}</p>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {t.features.items.map((item, i) => {
             const Icon = icons[i];
             return (
               <motion.div
                 key={i}
-                initial={{ opacity: 0, y: 20 }}
+                initial={{ opacity: 0, y: 10 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
-                transition={{ delay: i * 0.1 }}
-                className="p-6 rounded-2xl border transition-all hover:border-brand-500/50 hover:shadow-lg group"
-                style={{ borderColor: 'var(--border)', backgroundColor: 'var(--card)' }}
+                transition={{ delay: i * 0.05 }}
+                className="p-5 rounded-lg border border-[var(--border)] bg-[var(--card)] hover:border-brand-500/50 transition-all group"
               >
-                <div className="w-10 h-10 rounded-xl bg-brand-500/10 flex items-center justify-center mb-4 group-hover:bg-brand-500/20 transition-colors">
-                  <Icon size={20} className="text-brand-500" />
+                <div className="w-9 h-9 rounded bg-brand-50 dark:bg-brand-950/20 flex items-center justify-center mb-3 group-hover:bg-brand-100 dark:group-hover:bg-brand-950/30 transition-colors">
+                  <Icon size={18} className="text-brand-600 dark:text-brand-400" />
                 </div>
-                <h3 className="font-semibold text-lg mb-2" style={{ color: 'var(--text)' }}>{item.title}</h3>
-                <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>{item.desc}</p>
+                <h3 className="font-semibold text-base mb-1.5 text-[var(--text)]">{item.title}</h3>
+                <p className="text-sm text-[var(--text-secondary)]">{item.desc}</p>
               </motion.div>
             );
           })}
@@ -230,27 +218,27 @@ function Process() {
   const { t } = useI18n();
 
   return (
-    <section className="py-20">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="text-center mb-12">
-          <h2 className="text-3xl sm:text-4xl font-bold mb-4" style={{ color: 'var(--text)' }}>{t.process.title}</h2>
+    <section className="py-16 bg-[var(--bg)]">
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="text-center mb-10">
+          <h2 className="text-2xl sm:text-3xl font-bold mb-3 text-[var(--text)]">{t.process.title}</h2>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
           {t.process.steps.map((step, i) => (
             <motion.div
               key={i}
-              initial={{ opacity: 0, y: 20 }}
+              initial={{ opacity: 0, y: 10 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
-              transition={{ delay: i * 0.15 }}
+              transition={{ delay: i * 0.1 }}
               className="relative text-center"
             >
-              <div className="text-5xl font-black gradient-text mb-4">{step.num}</div>
-              <h3 className="font-semibold text-lg mb-2" style={{ color: 'var(--text)' }}>{step.title}</h3>
-              <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>{step.desc}</p>
+              <div className="text-3xl font-bold text-brand-600 dark:text-brand-400 mb-3">{step.num}</div>
+              <h3 className="font-semibold text-base mb-1.5 text-[var(--text)]">{step.title}</h3>
+              <p className="text-sm text-[var(--text-secondary)]">{step.desc}</p>
               {i < 3 && (
-                <div className="hidden md:block absolute top-8 -right-4 text-brand-500/30">
-                  <ArrowRight size={24} />
+                <div className="hidden md:block absolute top-6 -right-3 text-[var(--text-muted)]">
+                  <ArrowRight size={16} />
                 </div>
               )}
             </motion.div>

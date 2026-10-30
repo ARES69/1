@@ -689,23 +689,23 @@ Requests: ${costTracker.requests.length}`;
   ];
 
   return (
-    <main className="pt-16 flex flex-col" style={{ backgroundColor: 'var(--bg)', height: 'calc(100vh - 64px)' }}>
+    <main className="pt-14 flex flex-col bg-[var(--bg)]" style={{ height: 'calc(100vh - 56px)' }}>
       {/* Toolbar */}
-      <div className="flex items-center justify-between px-4 py-2 border-b" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--bg-secondary)' }}>
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <div className={`w-2 h-2 rounded-full ${status === 'running' ? 'bg-green-500 animate-pulse' : status === 'done' ? 'bg-emerald-500' : status === 'error' ? 'bg-red-500' : 'bg-slate-400'}`} />
-            <span className="text-sm font-medium" style={{ color: 'var(--text)' }}>
+      <div className="flex items-center justify-between px-3 py-1.5 border-b bg-[var(--bg-secondary)]" style={{ borderColor: 'var(--border)' }}>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
+            <div className={`w-1.5 h-1.5 rounded-full ${status === 'running' ? 'bg-green-500 animate-pulse' : status === 'done' ? 'bg-emerald-500' : status === 'error' ? 'bg-red-500' : 'bg-[var(--text-muted)]'}`} />
+            <span className="text-xs font-medium text-[var(--text)]">
               {status === 'idle' ? 'Ready' : status === 'running' ? `Step ${iteration}` : status === 'done' ? 'Done' : 'Error'}
             </span>
           </div>
           {activeProvider && (
-            <span className="text-xs px-2 py-0.5 rounded-full bg-brand-500/10 text-brand-500 flex items-center gap-1">
+            <span className="text-xs px-1.5 py-0.5 rounded bg-brand-50 dark:bg-brand-950/20 text-brand-600 dark:text-brand-400 flex items-center gap-1">
               <Zap size={10} /> {activeProvider.name}
             </span>
           )}
           {costTracker.totalCost > 0 && (
-            <button onClick={() => setShowCostModal(true)} className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 flex items-center gap-1 hover:bg-emerald-500/20 transition-colors">
+            <button onClick={() => setShowCostModal(true)} className="text-xs px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600 dark:text-emerald-400 flex items-center gap-1 hover:bg-emerald-100 dark:hover:bg-emerald-950/30 transition-colors">
               <DollarSign size={10} /> {formatCost(costTracker.totalCost)}
             </button>
           )}
@@ -716,40 +716,39 @@ Requests: ${costTracker.requests.length}`;
             />
           </div>
           {project && (
-            <button onClick={() => setShowProjectPicker(true)} className="text-xs px-2 py-0.5 rounded border hover:border-brand-500 transition-colors flex items-center gap-1"
-              style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}>
+            <button onClick={() => setShowProjectPicker(true)} className="text-xs px-1.5 py-0.5 rounded border border-[var(--border)] text-[var(--text-muted)] hover:border-brand-500 hover:text-brand-600 transition-colors flex items-center gap-1">
               <FolderOpen size={10} /> {project.name}
             </button>
           )}
         </div>
-        <div className="flex items-center gap-2">
-          <button onClick={() => setShowInstructionsModal(true)} className="flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors hover:bg-brand-500/10" style={{ color: 'var(--text-muted)' }} title="Project instructions">
+        <div className="flex items-center gap-1">
+          <button onClick={() => setShowInstructionsModal(true)} className="p-1.5 rounded text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--bg-tertiary)] transition-colors" title="Project instructions">
             <FileCode size={14} />
           </button>
-          <button onClick={handleCreateCheckpoint} disabled={!fs} className="flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors hover:bg-brand-500/10 disabled:opacity-30" style={{ color: 'var(--text-muted)' }} title="Create checkpoint">
+          <button onClick={handleCreateCheckpoint} disabled={!fs} className="p-1.5 rounded text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--bg-tertiary)] disabled:opacity-30 transition-colors" title="Create checkpoint">
             <History size={14} />
           </button>
-          <button onClick={() => setShowCheckpoints(true)} disabled={!project || project.checkpoints.length === 0} className="flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors hover:bg-brand-500/10 disabled:opacity-30" style={{ color: 'var(--text-muted)' }} title="Checkpoints">
-            <Clock size={14} /> {project?.checkpoints.length || 0}
+          <button onClick={() => setShowCheckpoints(true)} disabled={!project || project.checkpoints.length === 0} className="p-1.5 rounded text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--bg-tertiary)] disabled:opacity-30 transition-colors flex items-center gap-1" title="Checkpoints">
+            <Clock size={14} /> <span className="text-xs">{project?.checkpoints.length || 0}</span>
           </button>
-          <button onClick={() => setShowTemplateGallery(true)} className="flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors hover:bg-brand-500/10" style={{ color: 'var(--text-muted)' }} title="Templates">
+          <button onClick={() => setShowTemplateGallery(true)} className="px-2 py-1.5 rounded text-xs text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--bg-tertiary)] transition-colors flex items-center gap-1" title="Templates">
             <FileText size={14} /> Templates
           </button>
           {status === 'running' && (
-            <button onClick={handleStop} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-colors">
-              <Square size={14} /> Stop
+            <button onClick={handleStop} className="ml-2 flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-red-50 dark:bg-red-950/20 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-950/30 transition-colors">
+              <Square size={12} /> Stop
             </button>
           )}
-          <button onClick={handleReset} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors hover:bg-brand-500/10" style={{ color: 'var(--text-muted)' }}>
-            <RotateCcw size={14} /> Reset
+          <button onClick={handleReset} className="p-1.5 rounded text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--bg-tertiary)] transition-colors" title="Reset">
+            <RotateCcw size={14} />
           </button>
           {artifact && (
-            <button onClick={handleDownloadArtifact} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-accent-500/10 text-accent-500 hover:bg-accent-500/20 transition-colors">
-              <Download size={14} /> HTML
+            <button onClick={handleDownloadArtifact} className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-accent-50 dark:bg-accent-950/20 text-accent-600 dark:text-accent-400 hover:bg-accent-100 dark:hover:bg-accent-950/30 transition-colors">
+              <Download size={12} /> HTML
             </button>
           )}
-          <button onClick={() => setShowSettings(true)} className="p-1.5 rounded-lg transition-colors hover:bg-brand-500/10" style={{ color: 'var(--text-muted)' }}>
-            <Settings size={16} />
+          <button onClick={() => setShowSettings(true)} className="p-1.5 rounded text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--bg-tertiary)] transition-colors" title="Settings">
+            <Settings size={14} />
           </button>
         </div>
       </div>
