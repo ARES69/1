@@ -46,9 +46,9 @@ export default function Auth() {
           {/* Terminal header */}
           <div className="flex items-center gap-2 px-4 py-2" style={{ backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }}>
             <div className="flex gap-1.5">
-              <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: 'var(--color-danger-red)' }} />
-              <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: 'var(--color-warning-orange)' }} />
-              <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: 'var(--color-success-green)' }} />
+              <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#ff3b30' }} />
+              <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#ff9f0a' }} />
+              <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#30d158' }} />
             </div>
             <span className="terminal-text text-xs ml-2" style={{ color: 'var(--text-muted)' }}>
               ~/auth/{isLogin ? 'login' : 'signup'}
@@ -69,7 +69,7 @@ export default function Auth() {
             </p>
 
             {error && (
-              <div className="mb-4 p-3 rounded-[4px] terminal-text text-sm" style={{ backgroundColor: 'rgba(255, 59, 48, 0.1)', border: '1px solid var(--color-danger-red)', color: 'var(--color-danger-red)' }}>
+              <div className="mb-4 p-3 rounded-[4px] terminal-text text-sm" style={{ backgroundColor: 'rgba(255, 59, 48, 0.1)', border: '1px solid #ff3b30', color: '#ff3b30' }}>
                 {error}
               </div>
             )}

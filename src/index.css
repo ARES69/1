@@ -48,6 +48,12 @@
   --card: #ffffff;
   --card-hover: #f8f7f7;
   --accent: #007aff;
+  
+  /* Semantic colors */
+  --color-accent-blue: #007aff;
+  --color-danger-red: #ff3b30;
+  --color-success-green: #30d158;
+  --color-warning-orange: #ff9f0a;
 }
 
 .dark {
@@ -62,18 +68,25 @@
   --card: #302c2c;
   --card-hover: #3a3535;
   --accent: #007aff;
+  
+  /* Semantic colors */
+  --color-accent-blue: #007aff;
+  --color-danger-red: #ff3b30;
+  --color-success-green: #30d158;
+  --color-warning-orange: #ff9f0a;
 }
 
 body {
   font-family: var(--font-mono);
-  background-color: var(--bg);
-  color: var(--text);
-  transition: background-color 0.15s ease, color 0.15s ease;
+  background-color: var(--bg, #fdfcfc);
+  color: var(--text, #201d1d);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   font-size: 16px;
   line-height: 1.5;
   font-weight: 400;
+  margin: 0;
+  padding: 0;
 }
 
 /* Scrollbar - minimal terminal style */
@@ -94,7 +107,7 @@ body {
 
 /* Terminal-style text emphasis */
 .terminal-text {
-  font-family: var(--font-mono);
+  font-family: var(--font-mono, 'IBM Plex Mono', monospace);
   font-weight: 500;
   letter-spacing: -0.01em;
 }
@@ -246,14 +259,7 @@ a:hover {
   color: white;
 }
 
-/* Smooth transitions */
-* {
-  transition-property: background-color, border-color, color;
-  transition-duration: 0.1s;
-  transition-timing-function: ease;
-}
-
-/* Disable transitions for animations */
-[data-animate] * {
-  transition: none;
+/* Smooth transitions - only for interactive elements */
+button, a, input {
+  transition: background-color 0.1s ease, border-color 0.1s ease, color 0.1s ease;
 }

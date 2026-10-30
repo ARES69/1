@@ -26,9 +26,9 @@ export default function Home() {
             {/* Terminal header */}
             <div className="flex items-center gap-2 px-4 py-2" style={{ backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }}>
               <div className="flex gap-1.5">
-                <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: 'var(--color-danger-red)' }} />
-                <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: 'var(--color-warning-orange)' }} />
-                <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: 'var(--color-success-green)' }} />
+                <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#ff3b30' }} />
+                <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#ff9f0a' }} />
+                <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#30d158' }} />
               </div>
               <span className="terminal-text text-xs ml-2" style={{ color: 'var(--text-muted)' }}>
                 ~/rs-builder
@@ -38,7 +38,7 @@ export default function Home() {
             {/* Terminal content */}
             <div className="p-6 md:p-8" style={{ backgroundColor: 'var(--bg)' }}>
               <div className="terminal-text text-sm mb-4" style={{ color: 'var(--text-muted)' }}>
-                <span style={{ color: 'var(--color-success-green)' }}>$</span> rs-builder --help
+                <span style={{ color: '#30d158' }}>$</span> rs-builder --help
               </div>
               <div className="terminal-text text-sm space-y-1" style={{ color: 'var(--text-secondary)' }}>
                 <p>AI agent that delivers artifacts, not advice.</p>

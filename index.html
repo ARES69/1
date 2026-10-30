@@ -13,7 +13,7 @@
     <script>
       (function(){
         var t = localStorage.getItem('rsb-theme');
-        if (!t) t = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        if (!t) t = 'light'; // Force light theme by default
         if (t === 'dark') document.documentElement.classList.add('dark');
         else document.documentElement.classList.remove('dark');
       })();

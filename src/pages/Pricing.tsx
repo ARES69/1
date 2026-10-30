@@ -33,7 +33,7 @@ export default function Pricing() {
             {t.pricing.yearly}
           </button>
           {yearly && (
-            <span className="badge" style={{ color: 'var(--color-success-green)' }}>
+            <span className="badge" style={{ color: '#30d158' }}>
               {t.pricing.save}
             </span>
           )}
@@ -72,7 +72,7 @@ export default function Pricing() {
                 <ul className="space-y-2 mb-6">
                   {plan.features.map((feature, j) => (
                     <li key={j} className="terminal-text text-sm flex items-start gap-2" style={{ color: 'var(--text-secondary)' }}>
-                      <span style={{ color: 'var(--color-success-green)' }}>✓</span>
+                      <span style={{ color: '#30d158' }}>✓</span>
                       {feature}
                     </li>
                   ))}

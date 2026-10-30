@@ -46,10 +46,10 @@ function Layout() {
             <Route path="/legal/:slug" element={<Legal />} />
             <Route path="*" element={
               <div className="pt-24 pb-20 text-center">
-                <h1 className="text-6xl font-bold gradient-text mb-4">404</h1>
-                <p className="text-lg mb-8" style={{ color: 'var(--text-secondary)' }}>Page not found</p>
-                <a href="/" className="px-6 py-3 rounded-xl bg-brand-600 text-white font-medium hover:bg-brand-700 transition-colors">
-                  Go Home
+                <h1 className="terminal-text text-6xl font-bold mb-4" style={{ color: 'var(--text)' }}>404</h1>
+                <p className="terminal-text text-lg mb-8" style={{ color: 'var(--text-secondary)' }}>page not found</p>
+                <a href="/" className="btn-primary terminal-text text-sm">
+                  ← go home
                 </a>
               </div>
             } />
