@@ -5,11 +5,13 @@ import { Footer } from './components/Footer';
 import ProtectedRoute from './components/ProtectedRoute';
 import ErrorBoundary from './components/ErrorBoundary';
 import Home from './pages/Home';
+import SimpleHome from './pages/SimpleHome';
 import Pricing from './pages/Pricing';
 import Workspace from './pages/Workspace';
 import Auth from './pages/Auth';
 import Blog from './pages/Blog';
 import Legal from './pages/Legal';
+import TestPage from './pages/TestPage';
 import { I18nProvider } from './i18n';
 import { ThemeProvider } from './lib/theme';
 
@@ -30,7 +32,9 @@ function Layout() {
           className="flex-1"
         >
           <Routes location={location}>
-            <Route path="/" element={<Home />} />
+            <Route path="/" element={<SimpleHome />} />
+            <Route path="/home-old" element={<Home />} />
+            <Route path="/test" element={<TestPage />} />
             <Route path="/pricing" element={<Pricing />} />
             <Route path="/app" element={
               <ProtectedRoute>
