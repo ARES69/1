@@ -89,7 +89,7 @@ export default function Workspace() {
   const [showSettings, setShowSettings] = useState(false);
   const [showCostModal, setShowCostModal] = useState(false);
   const [showInstructionsModal, setShowInstructionsModal] = useState(false);
-  const [showSetup, setShowSetup] = useState(shouldShowSetup());
+  const [showSetup, setShowSetup] = useState(false); // Не показывать автоматически
   const [showTemplateGallery, setShowTemplateGallery] = useState(false);
 
   // Cost tracking
@@ -689,7 +689,7 @@ Requests: ${costTracker.requests.length}`;
   ];
 
   return (
-    <main className="pt-16 h-screen flex flex-col" style={{ backgroundColor: 'var(--bg)' }}>
+    <main className="pt-16 flex flex-col" style={{ backgroundColor: 'var(--bg)', height: 'calc(100vh - 64px)' }}>
       {/* Toolbar */}
       <div className="flex items-center justify-between px-4 py-2 border-b" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--bg-secondary)' }}>
         <div className="flex items-center gap-3">
@@ -755,9 +755,9 @@ Requests: ${costTracker.requests.length}`;
       </div>
 
       {/* Main content */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex overflow-hidden min-h-0">
         {/* Left panel - Thread */}
-        <div className="w-96 border-r flex flex-col" style={{ borderColor: 'var(--border)' }}>
+        <div className="w-96 border-r flex flex-col min-h-0" style={{ borderColor: 'var(--border)' }}>
           <div className="flex items-center gap-2 px-3 pt-3 pb-2">
             <MessageSquare size={14} className="text-brand-500" />
             <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Thread</span>
@@ -890,7 +890,7 @@ Requests: ${costTracker.requests.length}`;
         </div>
 
         {/* Right panel - Tabs */}
-        <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="flex-1 flex flex-col overflow-hidden min-h-0">
           <div className="flex items-center border-b px-2" style={{ borderColor: 'var(--border)' }}>
             {tabs.map(tab => (
               <button key={tab.id} onClick={() => setActiveTab(tab.id)}

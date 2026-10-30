@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { Header } from './components/Header';
 import { Footer } from './components/Footer';
 import ProtectedRoute from './components/ProtectedRoute';
+import ErrorBoundary from './components/ErrorBoundary';
 import Home from './pages/Home';
 import Pricing from './pages/Pricing';
 import Workspace from './pages/Workspace';
@@ -33,7 +34,9 @@ function Layout() {
             <Route path="/pricing" element={<Pricing />} />
             <Route path="/app" element={
               <ProtectedRoute>
-                <Workspace />
+                <ErrorBoundary>
+                  <Workspace />
+                </ErrorBoundary>
               </ProtectedRoute>
             } />
             <Route path="/login" element={<Auth />} />
